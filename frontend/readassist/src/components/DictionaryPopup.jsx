@@ -94,8 +94,6 @@ function DictionaryPopup({ token, onClose }) {
   };
   
   const handleTouchStart = (e) => {
-    console.log(e);
-    e.preventDefault();
     setZIndex(getNextZIndex());
     const touch = e.touches[0];
 
@@ -105,7 +103,6 @@ function DictionaryPopup({ token, onClose }) {
     };
 
     const handleTouchMove = (e) => {
-      console.log(e);
       e.preventDefault();
       const popup = popupRef.current;
       if (!popup) return;

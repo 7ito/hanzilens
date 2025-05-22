@@ -93,7 +93,7 @@ export default function InfoModal({ isOpen, onClose, children }) {
       />
 
       {/* Modal container */}
-      <div className="relative bg-red-300 rounded-lg shadow-xl max-w-full max-h-[90vh] w-full md:w-auto md:min-w-[500px] overflow-auto">
+      <div className="relative bg-red-300 rounded-lg shadow-xl max-w-full max-h-[90vh] w-full md:w-auto md:min-w-[500px] overflow-hidden">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -103,7 +103,7 @@ export default function InfoModal({ isOpen, onClose, children }) {
         </button>
 
         {/* Content */}
-        <div className="p-6 text-black text-sm md:text-base lg:text-base">
+        <div className="p-6 text-black text-sm md:text-base lg:text-base border-black border-2 rounded-md">
           <h2 id="modal-title" className="text-lg md:text-xl lg:text-3xl font-bold mb-4 text-center">
             About
           </h2>
@@ -145,14 +145,16 @@ export default function InfoModal({ isOpen, onClose, children }) {
             <span>&nbsp;</span>
             <span className="font-bold text-base md:text-lg lg:text-xl">Limitations</span>
             <ul className="list-disc pl-[1em]">
-              <li>Because the sentence processing is done by prompting Qwen2.5 72B Instruct, there is unfortunately means inconsistency and sometimes inaccuracy, as well as long loading times.</li>
+              <li>Because the sentence processing is done by prompting Qwen2.5 72B Instruct, there is unfortunately inconsistency and sometimes inaccuracy, as well as long loading times.</li>
               <li>8-60+ seconds depending on the length of the sentence (the sentence in the example can be considered as short).</li>
               <li>The prompt is centered around analyzing sentences with semantic meaning, so shorter strings of text may yield off or unsatisfactory results.</li>
             </ul>
 
             <span>&nbsp;</span>
             <span className="font-bold text-base md:text-lg lg:text-xl">Next Steps</span>
-            <span>Fine-tuning a smaller specialized model specifically for analyzing and breaking down Chinese sentences in this manner would provide massive reductions in time.</span>
+            <span>Fine-tuning a smaller specialized model specifically for analyzing and breaking down Chinese sentences in this manner to reduce loading time.</span>
+            <span>Cross checking LLM results with dictionary entries to ensure accuracy.</span>
+            <span>Transition from LLM workflow to LLM agent doing the break downs.</span>
           </div>
         </div>
       </div>
