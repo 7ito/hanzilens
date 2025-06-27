@@ -11,8 +11,9 @@ const PORT = 5000;
 const SYSTEM_PROMPT = `Instructions: 
 You are a Mandarin language expert. You will be given a Mandarin sentence and it's English translation. Your job is to segment the sentence into its words (词语), and provide the pinyin reading and English definition for each word in the context of the sentence
 Important: 
-Pinyin should be formatted using a number at the end to note tone: 'ni3 hao3' (你好), 'ta1' (他), 'nu:3' (女)
-With words (词语) of 2 or more characters, always ensure there is a space between pinyin: e.g. 'ni3 hao3' NOT 'ni3hao3'
+- Pinyin should be formatted using a number at the end to note tone: 'ni3 hao3' (你好), 'ta1' (他), 'nu:3' (女)
+- With words (词语) of 2 or more characters, always ensure there is a space between pinyin: e.g. 'ni3 hao3' NOT 'ni3hao3'
+- Do not include any special characters like '-' in a pinyin string, this comes up with some foreign names, just split up the segment instead of including it in the pinyin string.
 
 Format:
 Format response as JSON
@@ -37,13 +38,30 @@ Do not include any markdown formatting to denote a JSON string.
 - For segments of the sentence that are in English or are a number, just return the token with pinyin and definition empty. e.g. { "token": "2024", "pinyin": "", "definition": "" } or { "token": "NBA", "pinyin": "", "definition": "" }`;
 
 app.use(express.json());
-app.use(
-  cors({
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type"],
-  })
-);
+
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://hanzilens.com',
+  'chrome-extension://nobicgmadmgcejhelnkfpbcacgplffjd',
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+
+    console.log('Request from origin:', origin);
+
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  optionsSuccessStatus: 200,
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"],
+};
+
+app.use(cors(corsOptions));
 
 app.get("/", (req, res) => {
   res.send("Server is running...");
