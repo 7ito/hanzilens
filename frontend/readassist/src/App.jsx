@@ -151,10 +151,10 @@ function App() {
           <div className="text-xl lg:text-4xl text-black text-center py-[2em]">
             {translation}
           </div>
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-center flex-wrap pt-3">
-            {segments.map((entry) => (
+          <div className="flex flex-col md:flex-row items-center md:items-start justify-center flex-wrap pt-3">
+            {segments.map((entry, index) => (
               <Ciyu
-                key={entry.token}
+                key={index}
                 text={entry.token}
                 pinyin={entry.pinyin ? entry.pinyin.split(" ") : [""]}
                 definition={entry.definition}
