@@ -84,18 +84,25 @@ remake/backend/
 - [x] Populated SQLite database (`data/cedict.sqlite` - 124,257 entries)
 - [x] Tests for parsing logic (`tests/import-cedict.test.ts` - 19 tests)
 
-### Phase 2: Dictionary Service & Lookup Endpoint [CURRENT]
+### Phase 2: Dictionary Service & Lookup Endpoint [COMPLETED]
 
-1. Dictionary service with SQLite connection (singleton)
-2. LRU cache for lookups
-3. `lookup(token)` - returns all matching entries
-4. `recursiveSegment(token)` - breaks down unknown compounds
-5. `POST /definitionLookup` endpoint
-6. Tests for dictionary service
+1. ~~Dictionary service with SQLite connection (singleton)~~
+2. ~~LRU cache for lookups (5000 max entries)~~
+3. ~~`lookup(token)` - returns all matching entries~~
+4. ~~`recursiveSegment(token)` - breaks down unknown compounds~~
+5. ~~`POST /definitionLookup` endpoint~~
+6. ~~Tests for dictionary service~~
 
-**Deliverables:** Working dictionary lookup with recursive fallback
+**Deliverables:**
+- [x] Dictionary service (`src/services/dictionary.ts`)
+- [x] Types (`src/types/index.ts`)
+- [x] Config loader (`src/config/index.ts`)
+- [x] Dictionary route (`src/routes/dictionary.ts`)
+- [x] Express app (`src/app.ts`)
+- [x] Tests (`tests/dictionary.test.ts` - 20 tests)
+- [x] Total: 39 tests passing
 
-### Phase 3: AI Service & Parse Endpoint
+### Phase 3: AI Service & Parse Endpoint [CURRENT]
 
 1. OpenRouter API wrapper with streaming
 2. Prompt template for Chinese segmentation
