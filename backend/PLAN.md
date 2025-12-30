@@ -102,23 +102,27 @@ remake/backend/
 - [x] Tests (`tests/dictionary.test.ts` - 20 tests)
 - [x] Total: 39 tests passing
 
-### Phase 3: AI Service & Parse Endpoint [CURRENT]
+### Phase 3: AI Service & Parse Endpoint [COMPLETED]
 
-1. OpenRouter API wrapper with streaming
-2. Prompt template for Chinese segmentation
-3. `POST /parse` endpoint with SSE streaming
-4. Input validation (Chinese chars, length limit)
+1. ~~OpenRouter API wrapper with streaming~~
+2. ~~Prompt template for Chinese segmentation (model provides translation)~~
+3. ~~`POST /parse` endpoint with SSE streaming~~
+4. ~~Input validation middleware (25% Chinese, 500 char limit)~~
 
-**Deliverables:** Working sentence parsing with streaming response
+**Deliverables:**
+- [x] AI service (`src/services/ai.ts`)
+- [x] Validation middleware (`src/middleware/validation.ts`)
+- [x] Parse route (`src/routes/parse.ts`)
+- [x] Updated config with OpenRouter settings
+- [x] Updated .env.example with documentation
 
-### Phase 4: App Assembly & Middleware
+### Phase 4: Rate Limiting & Error Handling [CURRENT]
 
-1. Express app setup with JSON parsing, CORS
-2. Rate limiting (IP-based, ~100-200 req/min)
-3. Centralized error handler
-4. Mount all routes
+1. Rate limiting (IP-based, ~100-200 req/min)
+2. Centralized error handler
+3. Environment variable validation on startup
 
-**Deliverables:** Complete working backend
+**Deliverables:** Production-ready middleware
 
 ### Phase 5: Polish & Documentation
 
