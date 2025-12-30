@@ -2,7 +2,7 @@ import 'dotenv/config';
 
 export const config = {
   port: parseInt(process.env.PORT || '5000', 10),
-  corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173'],
+  corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'http://localhost:5174'],
   
   // Cache settings
   cache: {

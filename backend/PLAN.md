@@ -116,7 +116,7 @@ remake/backend/
 - [x] Updated config with OpenRouter settings
 - [x] Updated .env.example with documentation
 
-### Phase 4: Rate Limiting & Error Handling [CURRENT]
+### Phase 4: Rate Limiting & Error Handling
 
 1. Rate limiting (IP-based, ~100-200 req/min)
 2. Centralized error handler
@@ -124,14 +124,35 @@ remake/backend/
 
 **Deliverables:** Production-ready middleware
 
-### Phase 5: Polish & Documentation
+### Phase 5: Frontend Remake [COMPLETED]
 
-1. Environment variable validation
-2. Graceful error handling
-3. Update ARCHITECTURE.md
-4. Test with frontend
+1. ~~Set up React + TypeScript + Vite + shadcn/ui~~
+2. ~~Create InputView with validation (150 char limit, 25% Chinese)~~
+3. ~~Implement SSE streaming with progressive rendering~~
+4. ~~Create ResultsView with tone-colored pinyin~~
+5. ~~Create draggable DictionaryPopup~~
+6. ~~Test end-to-end with backend~~
 
-**Deliverables:** Production-ready backend
+**Deliverables:**
+- [x] Types (`src/types/index.ts`)
+- [x] API client (`src/lib/api.ts`)
+- [x] Pinyin utilities (`src/lib/pinyin.ts`)
+- [x] InputView component (`src/components/InputView.tsx`)
+- [x] ResultsView component (`src/components/ResultsView.tsx`)
+- [x] Segment component (`src/components/Segment.tsx`)
+- [x] DictionaryPopup component (`src/components/DictionaryPopup.tsx`)
+- [x] useParse hook (`src/hooks/useParse.ts`)
+- [x] App with view routing (`src/App.tsx`)
+
+### Phase 6: Polish & Documentation [CURRENT]
+
+1. Dark mode toggle
+2. Help/Info dialog
+3. Rate limiting middleware
+4. Error boundaries
+5. Update documentation
+
+**Deliverables:** Production-ready application
 
 ---
 
@@ -222,5 +243,34 @@ CREATE INDEX idx_pinyin ON entries(pinyin);
 PORT=5000
 OPENROUTER_API_KEY=<key>
 OPENROUTER_MODEL=<model-id>
-CORS_ORIGINS=http://localhost:5173
+CORS_ORIGINS=http://localhost:5173,http://localhost:5174
+```
+
+---
+
+## Frontend Structure
+
+```
+remake/frontend/
+├── src/
+│   ├── components/
+│   │   ├── ui/               # shadcn components
+│   │   ├── InputView.tsx     # Text input with validation
+│   │   ├── ResultsView.tsx   # Translation + segments display
+│   │   ├── Segment.tsx       # Word with tone-colored pinyin
+│   │   └── DictionaryPopup.tsx # Draggable dictionary lookup
+│   ├── hooks/
+│   │   └── useParse.ts       # SSE streaming hook
+│   ├── lib/
+│   │   ├── api.ts            # API client
+│   │   ├── pinyin.ts         # Pinyin conversion & tone colors
+│   │   └── utils.ts          # Utilities
+│   ├── types/
+│   │   └── index.ts          # Shared types
+│   ├── App.tsx               # Main app
+│   ├── main.tsx              # Entry point
+│   └── index.css             # Global styles + shadcn theme
+├── index.html
+├── vite.config.ts            # Dev server on port 5174
+└── package.json
 ```
