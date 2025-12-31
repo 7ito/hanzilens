@@ -13,3 +13,6 @@ dist/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Model evaluation results (keep .gitkeep)
+tests/model-eval/results/*.json

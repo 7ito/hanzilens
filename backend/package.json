@@ -8,7 +8,8 @@
     "start": "node dist/app.js",
     "import-cedict": "tsx scripts/import-cedict.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval:model": "tsx tests/model-eval/runner.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",

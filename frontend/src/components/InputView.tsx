@@ -138,7 +138,7 @@ export function InputView({ onSubmit, isLoading, onHelpClick }: InputViewProps) 
 						</h1>
 
 						<p className="text-sm text-muted-foreground">
-							Break down Chinese sentences into segments
+							Break down Chinese sentences!
 						</p>
 					</div>
 

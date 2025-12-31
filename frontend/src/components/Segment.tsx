@@ -1,7 +1,14 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { convertPinyin, getToneColor } from '@/lib/pinyin';
 import type { ParsedSegment } from '@/types';
 import { DictionaryPopup } from './DictionaryPopup';
+
+/**
+ * Check if a string contains at least one Chinese character
+ */
+function containsChinese(text: string): boolean {
+  return /[\u4e00-\u9fff]/.test(text);
+}
 
 interface SegmentProps {
   segment: ParsedSegment;
@@ -10,6 +17,8 @@ interface SegmentProps {
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
 }
+
+const POPUP_WIDTH = 300; // matches w-[300px] in DictionaryPopup
 
 /**
  * Displays a single Chinese character/word segment with pinyin and definition.
@@ -24,6 +33,8 @@ export function Segment({
   onMouseLeave,
 }: SegmentProps) {
   const [showPopup, setShowPopup] = useState(false);
+  const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
+  const segmentRef = useRef<HTMLDivElement>(null);
   const { token, pinyin, definition } = segment;
 
   // Guard against incomplete segment data during streaming
@@ -35,11 +46,19 @@ export function Segment({
   const converted = convertPinyin(pinyin || '');
   const characters = token.split('');
 
-  // Check if this is a clickable segment (has pinyin/definition)
-  const isClickable = pinyin || definition;
+  // Check if this is a clickable segment (must contain Chinese characters)
+  // Non-Chinese text like punctuation, numbers, or Latin letters should not open dictionary
+  const isClickable = containsChinese(token);
 
   const handleClick = () => {
-    if (isClickable) {
+    if (isClickable && segmentRef.current) {
+      if (!showPopup) {
+        // Calculate position when opening popup
+        const rect = segmentRef.current.getBoundingClientRect();
+        const x = rect.left + rect.width / 2 - POPUP_WIDTH / 2;
+        const y = rect.bottom + 8; // 8px gap below segment
+        setPopupPosition({ x, y });
+      }
       setShowPopup(!showPopup);
     }
   };
@@ -77,8 +96,9 @@ export function Segment({
   }
 
   return (
-    <div className="relative">
+    <>
       <div
+        ref={segmentRef}
         onClick={handleClick}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
@@ -125,10 +145,14 @@ export function Segment({
         </div>
       </div>
 
-      {/* Dictionary Popup */}
-      {showPopup && (
-        <DictionaryPopup token={token} onClose={() => setShowPopup(false)} />
+      {/* Dictionary Popup - rendered via portal */}
+      {showPopup && popupPosition && (
+        <DictionaryPopup 
+          token={token} 
+          onClose={() => setShowPopup(false)}
+          initialPosition={popupPosition}
+        />
       )}
-    </div>
+    </>
   );
 }

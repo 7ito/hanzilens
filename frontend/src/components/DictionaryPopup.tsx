@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Draggable from 'react-draggable';
 import { X, BookText, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +13,7 @@ import type { DictionaryEntry, LookupResponse } from '@/types';
 interface DictionaryPopupProps {
   token: string;
   onClose: () => void;
+  initialPosition: { x: number; y: number };
 }
 
 /**
@@ -60,7 +62,7 @@ function DictionaryEntryItem({ entry }: { entry: DictionaryEntry }) {
   );
 }
 
-export function DictionaryPopup({ token, onClose }: DictionaryPopupProps) {
+export function DictionaryPopup({ token, onClose, initialPosition }: DictionaryPopupProps) {
   const [data, setData] = useState<LookupResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,16 +102,17 @@ export function DictionaryPopup({ token, onClose }: DictionaryPopupProps) {
     setZIndex(getNextZIndex());
   };
 
-  return (
+  const popup = (
     <Draggable 
       handle=".drag-handle" 
       bounds="body" 
       nodeRef={nodeRef}
       onStart={bringToFront}
+      defaultPosition={initialPosition}
     >
       <div
         ref={nodeRef}
-        className="absolute top-full left-1/2 -translate-x-1/2 mt-2"
+        className="fixed top-0 left-0"
         style={{ zIndex }}
         onMouseDown={bringToFront}
       >
@@ -190,4 +193,6 @@ export function DictionaryPopup({ token, onClose }: DictionaryPopupProps) {
       </div>
     </Draggable>
   );
+
+  return createPortal(popup, document.body);
 }
