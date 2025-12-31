@@ -24,15 +24,15 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   next();
 });
 
-// Body parser with size limit (10MB to accommodate base64 images)
-app.use(express.json({ limit: '10mb' }));
-
 // CORS configuration
 app.use(cors({
   origin: config.corsOrigins,
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type'],
 }));
+
+// Body parser with size limit (10MB to accommodate base64 images)
+app.use(express.json({ limit: '10mb' }));
 
 // Health check endpoint
 app.get('/', (_req, res) => {
