@@ -37,12 +37,30 @@ export interface LookupResponse {
 }
 
 /**
- * Segment returned from AI parsing (used in Phase 3)
+ * Segment returned from AI parsing
  */
 export interface ParsedSegment {
+  id: number;
   token: string;
   pinyin: string;
   definition: string;
+}
+
+/**
+ * A part of the English translation with references to segment IDs
+ */
+export interface TranslationPart {
+  text: string;
+  segmentIds: number[];
+}
+
+/**
+ * Full response from AI parsing
+ */
+export interface ParseResponse {
+  translation: string;
+  translationParts: TranslationPart[];
+  segments: ParsedSegment[];
 }
 
 /**

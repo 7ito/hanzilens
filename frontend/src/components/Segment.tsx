@@ -5,13 +5,24 @@ import { DictionaryPopup } from './DictionaryPopup';
 
 interface SegmentProps {
   segment: ParsedSegment;
+  highlightColor?: string;
+  isHighlighted?: boolean;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }
 
 /**
  * Displays a single Chinese character/word segment with pinyin and definition.
  * Clicking opens a dictionary popup.
+ * Supports highlight colors for translation alignment feature.
  */
-export function Segment({ segment }: SegmentProps) {
+export function Segment({
+  segment,
+  highlightColor,
+  isHighlighted = false,
+  onMouseEnter,
+  onMouseLeave,
+}: SegmentProps) {
   const [showPopup, setShowPopup] = useState(false);
   const { token, pinyin, definition } = segment;
 
@@ -35,9 +46,21 @@ export function Segment({ segment }: SegmentProps) {
 
   // For punctuation or non-Chinese text, render with same structure as clickable
   // segments to maintain vertical alignment (empty pinyin space + character + empty definition)
+  // Still support highlighting for translation alignment
   if (!isClickable) {
     return (
-      <div className="flex flex-col items-center px-1 py-2">
+      <div
+        className={`
+          flex flex-col items-center px-1 py-2
+          transition-all duration-150 rounded-lg
+          ${isHighlighted ? '' : ''}
+        `}
+        style={{
+          backgroundColor: isHighlighted ? highlightColor : undefined,
+        }}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      >
         {/* Pinyin + Character structure matching clickable segments */}
         <div className="flex flex-row items-end">
           <div className="flex flex-col items-center">
@@ -57,12 +80,17 @@ export function Segment({ segment }: SegmentProps) {
     <div className="relative">
       <div
         onClick={handleClick}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
         className={`
           flex flex-col items-center justify-center px-4 py-2 cursor-pointer
-          transition-all duration-200 rounded-lg
+          transition-all duration-150 rounded-lg
           hover:bg-accent/10
           ${showPopup ? 'bg-accent/20 ring-2 ring-accent' : ''}
         `}
+        style={{
+          backgroundColor: isHighlighted && !showPopup ? highlightColor : undefined,
+        }}
       >
         {/* Pinyin + Character pairs */}
         <div className="flex flex-row items-end gap-0.5">

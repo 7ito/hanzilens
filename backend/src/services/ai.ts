@@ -1,20 +1,37 @@
 import { config } from '../config/index.js';
 
-const SYSTEM_PROMPT = `You are a Chinese language segmentation assistant. Your task is to break down Chinese sentences into individual words (词语) and provide linguistic information for each.
+const SYSTEM_PROMPT = `You are a Chinese language segmentation assistant. Your task is to break down Chinese sentences into individual words (词语) and provide linguistic information for each, along with alignment to the English translation.
 
 ## Input
 You will receive a Chinese sentence.
 
 ## Output
-Return a JSON object with:
+Return a JSON object with these fields IN THIS EXACT ORDER:
 1. "translation": A natural English translation of the full sentence
-2. "segments": An array of word segments
+2. "segments": An array of word segments with unique IDs
+3. "translationParts": An array of translation fragments with segment references
+
+IMPORTANT: Output segments BEFORE translationParts to enable streaming display.
 
 ## Segment Format
 Each segment must have:
+- "id": A unique integer starting from 0, incrementing for each segment
 - "token": The original Chinese text
 - "pinyin": Pronunciation with tone numbers (1-5), spaces between syllables
 - "definition": The contextual meaning in this sentence (concise, 1-5 words)
+
+## Translation Parts Format
+Break the English translation into parts that map back to Chinese segments:
+- "text": The English text fragment (word, phrase, or punctuation)
+- "segmentIds": Array of segment IDs this text corresponds to
+
+Rules for translationParts:
+- A part can reference multiple segments (e.g., "11th" references both 第 and 11)
+- A part can reference no segments (segmentIds: []) for English grammar words like "the", "of", "a"
+- Multiple parts can reference the same segment if needed
+- Spaces should be separate parts with empty segmentIds: {"text": " ", "segmentIds": []}
+- Concatenating all parts' text must exactly equal the translation string
+- Keep multi-word English phrases together when they map to one Chinese segment
 
 ## Rules
 
@@ -27,14 +44,14 @@ Each segment must have:
 ### Segmentation
 - Segment into natural word units (词语), not individual characters
 - Keep grammatical particles attached appropriately: 了, 的, 吗, 吧
-- Proper nouns stay as one segment
+- Proper nouns and titles stay as one segment (e.g., 《异度觉醒》)
 
 ### Special Cases
-- Punctuation: {"token": "。", "pinyin": "", "definition": ""}
-- Numbers: {"token": "2024", "pinyin": "", "definition": ""}
-- English: {"token": "NBA", "pinyin": "", "definition": ""}
+- Punctuation: {"id": N, "token": "。", "pinyin": "", "definition": ""}
+- Numbers: {"id": N, "token": "2024", "pinyin": "", "definition": ""}
+- English: {"id": N, "token": "NBA", "pinyin": "", "definition": ""}
 
-## Example
+## Example 1 (Simple)
 
 Input: 你喜欢吃中国菜吗？
 
@@ -42,13 +59,56 @@ Output:
 {
   "translation": "Do you like eating Chinese food?",
   "segments": [
-    {"token": "你", "pinyin": "ni3", "definition": "you"},
-    {"token": "喜欢", "pinyin": "xi3 huan5", "definition": "like"},
-    {"token": "吃", "pinyin": "chi1", "definition": "eat"},
-    {"token": "中国", "pinyin": "zhong1 guo2", "definition": "Chinese"},
-    {"token": "菜", "pinyin": "cai4", "definition": "food"},
-    {"token": "吗", "pinyin": "ma5", "definition": "(question)"},
-    {"token": "？", "pinyin": "", "definition": ""}
+    {"id": 0, "token": "你", "pinyin": "ni3", "definition": "you"},
+    {"id": 1, "token": "喜欢", "pinyin": "xi3 huan5", "definition": "like"},
+    {"id": 2, "token": "吃", "pinyin": "chi1", "definition": "eat"},
+    {"id": 3, "token": "中国", "pinyin": "zhong1 guo2", "definition": "Chinese"},
+    {"id": 4, "token": "菜", "pinyin": "cai4", "definition": "food"},
+    {"id": 5, "token": "吗", "pinyin": "ma5", "definition": "(question)"},
+    {"id": 6, "token": "？", "pinyin": "", "definition": ""}
+  ],
+  "translationParts": [
+    {"text": "Do", "segmentIds": [5]},
+    {"text": " ", "segmentIds": []},
+    {"text": "you", "segmentIds": [0]},
+    {"text": " ", "segmentIds": []},
+    {"text": "like", "segmentIds": [1]},
+    {"text": " ", "segmentIds": []},
+    {"text": "eating", "segmentIds": [2]},
+    {"text": " ", "segmentIds": []},
+    {"text": "Chinese", "segmentIds": [3]},
+    {"text": " ", "segmentIds": []},
+    {"text": "food", "segmentIds": [4]},
+    {"text": "?", "segmentIds": [6]}
+  ]
+}
+
+## Example 2 (Complex with reordering and multi-segment mapping)
+
+Input: 这是第11集。
+
+Output:
+{
+  "translation": "This is the 11th episode.",
+  "segments": [
+    {"id": 0, "token": "这", "pinyin": "zhe4", "definition": "this"},
+    {"id": 1, "token": "是", "pinyin": "shi4", "definition": "is"},
+    {"id": 2, "token": "第", "pinyin": "di4", "definition": "ordinal prefix"},
+    {"id": 3, "token": "11", "pinyin": "", "definition": ""},
+    {"id": 4, "token": "集", "pinyin": "ji2", "definition": "episode"},
+    {"id": 5, "token": "。", "pinyin": "", "definition": ""}
+  ],
+  "translationParts": [
+    {"text": "This", "segmentIds": [0]},
+    {"text": " ", "segmentIds": []},
+    {"text": "is", "segmentIds": [1]},
+    {"text": " ", "segmentIds": []},
+    {"text": "the", "segmentIds": []},
+    {"text": " ", "segmentIds": []},
+    {"text": "11th", "segmentIds": [2, 3]},
+    {"text": " ", "segmentIds": []},
+    {"text": "episode", "segmentIds": [4]},
+    {"text": ".", "segmentIds": [5]}
   ]
 }`;
 

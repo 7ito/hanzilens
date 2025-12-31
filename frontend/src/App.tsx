@@ -10,7 +10,7 @@ const HAS_VISITED_KEY = 'hanzilens-has-visited';
 export function App() {
   const [view, setView] = useState<ViewState>('input');
   const [showHelp, setShowHelp] = useState(false);
-  const { isLoading, translation, segments, parse, reset } = useParse();
+  const { isLoading, translation, translationParts, segments, parse, reset } = useParse();
 
   // Show help dialog on first visit
   useEffect(() => {
@@ -50,6 +50,7 @@ export function App() {
       ) : (
         <ResultsView
           translation={translation}
+          translationParts={translationParts}
           segments={segments}
           isLoading={isLoading}
           onBack={handleBack}

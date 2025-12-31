@@ -1,12 +1,13 @@
 import { useState, useCallback, useRef } from 'react';
 import { IncompleteJsonParser } from 'incomplete-json-parser';
 import { startParse } from '@/lib/api';
-import type { ParsedSegment } from '@/types';
+import type { ParsedSegment, TranslationPart } from '@/types';
 
 interface ParseState {
   isLoading: boolean;
   error: string | null;
   translation: string;
+  translationParts: TranslationPart[];
   segments: ParsedSegment[];
 }
 
@@ -19,6 +20,7 @@ const initialState: ParseState = {
   isLoading: false,
   error: null,
   translation: '',
+  translationParts: [],
   segments: [],
 };
 
@@ -72,6 +74,10 @@ export function useParse(): UseParseResult {
               ...prev,
               segments: final.segments || prev.segments,
               translation: final.translation || prev.translation,
+              // Only set translationParts from final response (not during streaming)
+              translationParts: Array.isArray(final.translationParts)
+                ? final.translationParts
+                : prev.translationParts,
               isLoading: false,
             }));
           } catch {

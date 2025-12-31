@@ -11,12 +11,12 @@ interface HelpDialogProps {
 
 // Example parsed sentence from legacy: 你有光明的未来。
 const exampleSegments: ParsedSegment[] = [
-  { token: '你', pinyin: 'ni3', definition: 'you' },
-  { token: '有', pinyin: 'you3', definition: 'have' },
-  { token: '光明', pinyin: 'guang1 ming2', definition: 'bright' },
-  { token: '的', pinyin: 'de', definition: "'s (possessive)" },
-  { token: '未来', pinyin: 'wei4 lai2', definition: 'future' },
-  { token: '。', pinyin: '', definition: '' },
+  { id: 0, token: '你', pinyin: 'ni3', definition: 'you' },
+  { id: 1, token: '有', pinyin: 'you3', definition: 'have' },
+  { id: 2, token: '光明', pinyin: 'guang1 ming2', definition: 'bright' },
+  { id: 3, token: '的', pinyin: 'de', definition: "'s (possessive)" },
+  { id: 4, token: '未来', pinyin: 'wei4 lai2', definition: 'future' },
+  { id: 5, token: '。', pinyin: '', definition: '' },
 ];
 
 export function HelpDialog({ open, onClose }: HelpDialogProps) {

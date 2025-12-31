@@ -6,9 +6,18 @@
  * A parsed segment from the AI
  */
 export interface ParsedSegment {
+  id: number;
   token: string;
   pinyin: string;
   definition: string;
+}
+
+/**
+ * A part of the English translation with references to segment IDs
+ */
+export interface TranslationPart {
+  text: string;
+  segmentIds: number[];
 }
 
 /**
@@ -16,6 +25,7 @@ export interface ParsedSegment {
  */
 export interface ParseResponse {
   translation: string;
+  translationParts: TranslationPart[];
   segments: ParsedSegment[];
 }
 
