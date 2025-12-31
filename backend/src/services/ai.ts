@@ -112,20 +112,86 @@ Output:
   ]
 }`;
 
+const VISION_PROMPT = `You are a Chinese language OCR and segmentation assistant. Your task is to extract Chinese text from an image and segment it into individual words.
+
+## Input
+You will receive an image that may contain Chinese text.
+
+## Task
+1. Extract ALL Chinese text visible in the image
+2. If multiple text regions exist, concatenate them in natural reading order (top-to-bottom, left-to-right)
+3. Segment the extracted text into words with pinyin and definitions
+4. Map the segments to an English translation
+
+## Output Format
+Return a JSON object with these fields IN THIS EXACT ORDER:
+1. "translation": A natural English translation of the extracted text
+2. "segments": An array of word segments with unique IDs
+3. "translationParts": An array of translation fragments with segment references
+
+## Segment Format
+Each segment must have:
+- "id": A unique integer starting from 0
+- "token": The original Chinese text
+- "pinyin": Pronunciation with tone numbers (1-5), spaces between syllables
+- "definition": The contextual meaning (concise, 1-5 words)
+
+## Translation Parts Format
+- "text": The English text fragment
+- "segmentIds": Array of segment IDs this text corresponds to
+
+## Pinyin Rules
+- Use tone numbers: ni3 hao3, bu4 shi4, ma5
+- Use u: for ü: nu:3, lü4
+- Separate syllables with spaces
+
+## Special Cases
+- Punctuation: {"id": N, "token": "。", "pinyin": "", "definition": ""}
+- Numbers: {"id": N, "token": "2024", "pinyin": "", "definition": ""}
+- If NO Chinese text is found, return: {"error": "no_chinese_text", "message": "No Chinese text found in image"}
+
+## Example Output
+{
+  "translation": "Hello",
+  "segments": [
+    {"id": 0, "token": "你好", "pinyin": "ni3 hao3", "definition": "hello"}
+  ],
+  "translationParts": [
+    {"text": "Hello", "segmentIds": [0]}
+  ]
+}`;
+
 /**
- * Validate that OpenRouter is configured
+ * Validate that OpenRouter is configured for text parsing
  */
 export function isConfigured(): boolean {
   return !!(config.openrouter.apiKey && config.openrouter.model);
 }
 
 /**
- * Get configuration status message
+ * Validate that OpenRouter is configured for vision/image parsing
+ */
+export function isVisionConfigured(): boolean {
+  return !!(config.openrouter.apiKey && config.openrouter.visionModel);
+}
+
+/**
+ * Get configuration status message for text parsing
  */
 export function getConfigStatus(): string {
   const issues: string[] = [];
   if (!config.openrouter.apiKey) issues.push('OPENROUTER_API_KEY not set');
   if (!config.openrouter.model) issues.push('OPENROUTER_MODEL not set');
+  return issues.length > 0 ? issues.join(', ') : 'configured';
+}
+
+/**
+ * Get configuration status message for vision parsing
+ */
+export function getVisionConfigStatus(): string {
+  const issues: string[] = [];
+  if (!config.openrouter.apiKey) issues.push('OPENROUTER_API_KEY not set');
+  if (!config.openrouter.visionModel) issues.push('OPENROUTER_VISION_MODEL not set');
   return issues.length > 0 ? issues.join(', ') : 'configured';
 }
 
@@ -160,6 +226,57 @@ export async function streamParse(sentence: string): Promise<Response> {
       ],
       stream: true,
       // Request JSON response format (supported by most models)
+      response_format: { type: 'json_object' },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`OpenRouter API error (${response.status}): ${errorBody}`);
+  }
+
+  return response;
+}
+
+/**
+ * Stream a vision chat completion from OpenRouter for image OCR.
+ * Returns a ReadableStream that yields SSE chunks.
+ * 
+ * @param imageDataUrl - Base64 data URL (e.g., "data:image/jpeg;base64,...")
+ */
+export async function streamParseImage(imageDataUrl: string): Promise<Response> {
+  if (!isVisionConfigured()) {
+    throw new Error(`OpenRouter vision not configured: ${getVisionConfigStatus()}`);
+  }
+
+  const response = await fetch(`${config.openrouter.baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${config.openrouter.apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://hanzilens.com',
+      'X-Title': 'HanziLens',
+    },
+    body: JSON.stringify({
+      model: config.openrouter.visionModel,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: VISION_PROMPT,
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: imageDataUrl,
+              },
+            },
+          ],
+        },
+      ],
+      stream: true,
       response_format: { type: 'json_object' },
     }),
   });

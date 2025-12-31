@@ -3,6 +3,13 @@
  */
 
 /**
+ * Input for the parse endpoint - either text or image
+ */
+export type ParseInput = 
+  | { type: 'text'; sentence: string }
+  | { type: 'image'; image: string }; // base64 data URL
+
+/**
  * A parsed segment from the AI
  */
 export interface ParsedSegment {

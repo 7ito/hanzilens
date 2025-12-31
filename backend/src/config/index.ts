@@ -17,7 +17,15 @@ export const config = {
     // - google/gemini-flash-1.5 (fast, cheap)
     // - qwen/qwen-2.5-72b-instruct (good for Chinese)
     model: process.env.OPENROUTER_MODEL || '',
+    // Vision model for image OCR (e.g., openai/gpt-4o, anthropic/claude-sonnet-4)
+    visionModel: process.env.OPENROUTER_VISION_MODEL || '',
     baseUrl: 'https://openrouter.ai/api/v1',
+  },
+
+  // Image upload settings
+  image: {
+    maxSizeBytes: 5 * 1024 * 1024, // 5MB max
+    allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
   },
 
   // Input validation

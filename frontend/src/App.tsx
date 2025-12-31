@@ -3,7 +3,7 @@ import { InputView } from '@/components/InputView';
 import { ResultsView } from '@/components/ResultsView';
 import { HelpDialog } from '@/components/HelpDialog';
 import { useParse } from '@/hooks/useParse';
-import type { ViewState } from '@/types';
+import type { ViewState, ParseInput } from '@/types';
 
 const HAS_VISITED_KEY = 'hanzilens-has-visited';
 
@@ -21,9 +21,9 @@ export function App() {
     }
   }, []);
 
-  const handleSubmit = async (sentence: string) => {
+  const handleSubmit = async (input: ParseInput) => {
     setView('results');
-    await parse(sentence);
+    await parse(input);
   };
 
   const handleBack = () => {

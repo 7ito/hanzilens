@@ -160,6 +160,34 @@ remake/backend/
 - [x] Backend error handler (`src/middleware/errorHandler.ts`)
 - [x] README.md with setup instructions
 
+### Phase 7: Computer Vision OCR [COMPLETED]
+
+1. ~~Add vision model configuration (OPENROUTER_VISION_MODEL)~~
+2. ~~Create vision prompt for image OCR + segmentation~~
+3. ~~Add image validation middleware (base64, size limit, mime types)~~
+4. ~~Update /parse endpoint to accept image input~~
+5. ~~Create ImageInput frontend component (camera, file upload, paste)~~
+6. ~~Update InputView with image input option~~
+7. ~~Handle "no Chinese text found" error gracefully~~
+
+**Deliverables:**
+- [x] Vision config (`src/config/index.ts` - visionModel, image settings)
+- [x] Vision AI service (`src/services/ai.ts` - streamParseImage, VISION_PROMPT)
+- [x] Image validation (`src/middleware/validation.ts` - validateImageInput, validateParseInput)
+- [x] Updated parse route (`src/routes/parse.ts` - handles both text and image)
+- [x] ParseInput type (`frontend/src/types/index.ts`)
+- [x] ImageInput component (`frontend/src/components/ImageInput.tsx`)
+- [x] Updated InputView (`frontend/src/components/InputView.tsx`)
+- [x] Updated useParse hook (`frontend/src/hooks/useParse.ts`)
+- [x] Updated .env.example with OPENROUTER_VISION_MODEL
+
+**Features:**
+- Mobile: Take photo (camera) or choose from photo library
+- Desktop: Upload image file or paste from clipboard (Ctrl+V)
+- Supports JPEG, PNG, WebP, GIF (max 5MB)
+- Direct image-to-results flow (no intermediate text editing)
+- Mutual exclusivity: text clears image, image clears text
+
 ---
 
 ## Types

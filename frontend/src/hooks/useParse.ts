@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { IncompleteJsonParser } from 'incomplete-json-parser';
 import { startParse } from '@/lib/api';
-import type { ParsedSegment, TranslationPart } from '@/types';
+import type { ParsedSegment, TranslationPart, ParseInput } from '@/types';
 
 interface ParseState {
   isLoading: boolean;
@@ -12,7 +12,7 @@ interface ParseState {
 }
 
 interface UseParseResult extends ParseState {
-  parse: (sentence: string) => Promise<void>;
+  parse: (input: ParseInput) => Promise<void>;
   reset: () => void;
 }
 
@@ -41,7 +41,7 @@ export function useParse(): UseParseResult {
     setState(initialState);
   }, []);
 
-  const parse = useCallback(async (sentence: string) => {
+  const parse = useCallback(async (input: ParseInput) => {
     // Reset state and abort previous request
     reset();
 
@@ -53,7 +53,7 @@ export function useParse(): UseParseResult {
     let contentBuffer = '';
 
     try {
-      const response = await startParse(sentence);
+      const response = await startParse(input);
 
       if (!response.body) {
         throw new Error('No response body');
@@ -70,6 +70,17 @@ export function useParse(): UseParseResult {
           // Final parse of complete JSON
           try {
             const final = JSON.parse(contentBuffer);
+            
+            // Check for "no Chinese text" error from vision model
+            if (final.error === 'no_chinese_text') {
+              setState((prev) => ({
+                ...prev,
+                isLoading: false,
+                error: final.message || 'No Chinese text found in image',
+              }));
+              break;
+            }
+            
             setState((prev) => ({
               ...prev,
               segments: final.segments || prev.segments,
