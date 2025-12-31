@@ -1,12 +1,10 @@
 import Database from 'better-sqlite3';
 import { LRUCache } from 'lru-cache';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
 import { config } from '../config/index.js';
 import type { DictionaryEntry, DictionaryRow, LookupResponse } from '../types/index.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = resolve(__dirname, '../../data/cedict.sqlite');
+const DB_PATH = resolve(process.cwd(), 'data/cedict.sqlite');
 
 // Singleton database instance
 let db: Database.Database | null = null;
