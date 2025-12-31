@@ -1,15 +1,31 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import { config } from './config/index.js';
+import helmet from 'helmet';
+import { config, validateConfig } from './config/index.js';
 import dictionaryRouter from './routes/dictionary.js';
 import parseRouter from './routes/parse.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { isConfigured, getConfigStatus } from './services/ai.js';
+
+// Validate required configuration on startup
+validateConfig();
 
 const app = express();
 
-// Middleware
-app.use(express.json());
+// Trust proxy (for Caddy/nginx/Cloudflare - ensures correct client IP for rate limiting)
+app.set('trust proxy', 1);
+
+// Security middleware - set various HTTP headers
+app.use(helmet());
+
+// Request logging middleware
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ${req.method} ${req.path} - ${req.ip}`);
+  next();
+});
+
+// Body parser with size limit (10MB to accommodate base64 images)
+app.use(express.json({ limit: '10mb' }));
 
 // CORS configuration
 app.use(cors({
@@ -23,7 +39,6 @@ app.get('/', (_req, res) => {
   res.json({
     status: 'ok',
     message: 'HanziLens API is running',
-    ai: isConfigured() ? 'configured' : getConfigStatus(),
   });
 });
 
@@ -37,10 +52,6 @@ app.use(errorHandler);
 // Start server
 app.listen(config.port, () => {
   console.log(`Server listening at http://localhost:${config.port}`);
-  if (!isConfigured()) {
-    console.warn(`Warning: AI service not configured (${getConfigStatus()})`);
-    console.warn('The /parse endpoint will return 503 until configured.');
-  }
 });
 
 export default app;

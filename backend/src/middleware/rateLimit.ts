@@ -2,11 +2,11 @@ import rateLimit from 'express-rate-limit';
 
 /**
  * Rate limiter for /parse endpoint (AI calls - more expensive)
- * 100 requests per minute per IP
+ * 30 requests per minute per IP
  */
 export const parseRateLimit = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 100,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

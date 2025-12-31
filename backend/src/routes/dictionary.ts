@@ -36,6 +36,15 @@ router.post('/definitionLookup', lookupRateLimit, (req: Request<{}, {}, LookupRe
     return;
   }
 
+  // Limit token length to prevent expensive recursive segmentation
+  if (trimmedToken.length > 100) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'Token exceeds maximum length of 100 characters',
+    });
+    return;
+  }
+
   try {
     const result = definitionLookup(trimmedToken);
 

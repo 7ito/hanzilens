@@ -1,5 +1,8 @@
 import { config } from '../config/index.js';
 
+// Request timeout for AI calls (90 seconds)
+const AI_TIMEOUT_MS = 90_000;
+
 const SYSTEM_PROMPT = `You are a Chinese language segmentation assistant. Your task is to break down Chinese sentences into individual words (词语) and provide linguistic information for each, along with alignment to the English translation.
 
 ## Input
@@ -204,38 +207,55 @@ export async function streamParse(sentence: string): Promise<Response> {
     throw new Error(`OpenRouter not configured: ${getConfigStatus()}`);
   }
 
-  const response = await fetch(`${config.openrouter.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${config.openrouter.apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://hanzilens.com',
-      'X-Title': 'HanziLens',
-    },
-    body: JSON.stringify({
-      model: config.openrouter.model,
-      messages: [
-        {
-          role: 'system',
-          content: SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: sentence,
-        },
-      ],
-      stream: true,
-      // Request JSON response format (supported by most models)
-      response_format: { type: 'json_object' },
-    }),
-  });
+  // Set up timeout for the request
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`OpenRouter API error (${response.status}): ${errorBody}`);
+  try {
+    const response = await fetch(`${config.openrouter.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.openrouter.apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hanzilens.com',
+        'X-Title': 'HanziLens',
+      },
+      body: JSON.stringify({
+        model: config.openrouter.model,
+        messages: [
+          {
+            role: 'system',
+            content: SYSTEM_PROMPT,
+          },
+          {
+            role: 'user',
+            content: sentence,
+          },
+        ],
+        stream: true,
+        // Request JSON response format (supported by most models)
+        response_format: { type: 'json_object' },
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      // Log full error for debugging, but don't expose to client
+      console.error(`OpenRouter API error (${response.status}):`, errorBody);
+      throw new Error('AI service temporarily unavailable');
+    }
+
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('AI request timed out');
+    }
+    throw error;
   }
-
-  return response;
 }
 
 /**
@@ -249,42 +269,59 @@ export async function streamParseImage(imageDataUrl: string): Promise<Response> 
     throw new Error(`OpenRouter vision not configured: ${getVisionConfigStatus()}`);
   }
 
-  const response = await fetch(`${config.openrouter.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${config.openrouter.apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://hanzilens.com',
-      'X-Title': 'HanziLens',
-    },
-    body: JSON.stringify({
-      model: config.openrouter.visionModel,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: VISION_PROMPT,
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: imageDataUrl,
+  // Set up timeout for the request
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${config.openrouter.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.openrouter.apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hanzilens.com',
+        'X-Title': 'HanziLens',
+      },
+      body: JSON.stringify({
+        model: config.openrouter.visionModel,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: VISION_PROMPT,
               },
-            },
-          ],
-        },
-      ],
-      stream: true,
-      response_format: { type: 'json_object' },
-    }),
-  });
+              {
+                type: 'image_url',
+                image_url: {
+                  url: imageDataUrl,
+                },
+              },
+            ],
+          },
+        ],
+        stream: true,
+        response_format: { type: 'json_object' },
+      }),
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`OpenRouter API error (${response.status}): ${errorBody}`);
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      // Log full error for debugging, but don't expose to client
+      console.error(`OpenRouter Vision API error (${response.status}):`, errorBody);
+      throw new Error('AI vision service temporarily unavailable');
+    }
+
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('AI vision request timed out');
+    }
+    throw error;
   }
-
-  return response;
 }

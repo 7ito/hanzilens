@@ -1,4 +1,4 @@
-import { Router, Response as ExpressResponse } from 'express';
+import { Router, Request, Response as ExpressResponse } from 'express';
 import { 
   streamParse, 
   streamParseImage, 
@@ -13,9 +13,10 @@ import { parseRateLimit } from '../middleware/rateLimit.js';
 const router = Router();
 
 /**
- * Stream an AI response (fetch Response) to the client via SSE
+ * Stream an AI response (fetch Response) to the client via SSE.
+ * Handles client disconnection by canceling the AI stream.
  */
-async function streamResponse(aiResponse: Response, res: ExpressResponse): Promise<void> {
+async function streamResponse(aiResponse: Response, req: Request, res: ExpressResponse): Promise<void> {
   if (!aiResponse.body) {
     res.status(502).json({
       error: 'Bad Gateway',
@@ -28,14 +29,25 @@ async function streamResponse(aiResponse: Response, res: ExpressResponse): Promi
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx/Caddy buffering
 
   // Stream the response
   const reader = aiResponse.body.getReader();
   const decoder = new TextDecoder();
 
+  // Track if client disconnected
+  let clientDisconnected = false;
+
+  // Handle client disconnect - cancel the AI stream to save resources
+  req.on('close', () => {
+    clientDisconnected = true;
+    reader.cancel().catch(() => {
+      // Ignore cancel errors (stream may already be done)
+    });
+  });
+
   try {
-    while (true) {
+    while (!clientDisconnected) {
       const { done, value } = await reader.read();
       
       if (done) {
@@ -47,8 +59,10 @@ async function streamResponse(aiResponse: Response, res: ExpressResponse): Promi
       res.write(chunk);
     }
   } catch (streamError) {
-    console.error('Error during streaming:', streamError);
-    // Connection likely closed by client
+    // Only log if not a client disconnect
+    if (!clientDisconnected) {
+      console.error('Error during streaming:', streamError);
+    }
     if (!res.writableEnded) {
       res.end();
     }
@@ -99,7 +113,7 @@ router.post('/parse', parseRateLimit, validateParseInput, async (req: ValidatedR
       aiResponse = await streamParse(req.validatedText!);
     }
 
-    await streamResponse(aiResponse, res);
+    await streamResponse(aiResponse, req, res);
   } catch (error) {
     console.error('Error in /parse:', error);
     
