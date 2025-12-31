@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { definitionLookup } from '../services/dictionary.js';
+import { lookupRateLimit } from '../middleware/rateLimit.js';
 import type { LookupRequest } from '../types/index.js';
 
 const router = Router();
@@ -14,7 +15,7 @@ const router = Router();
  * Request body: { token: string }
  * Response: { entries: DictionaryEntry[], segments?: string[] }
  */
-router.post('/definitionLookup', (req: Request<{}, {}, LookupRequest>, res: Response) => {
+router.post('/definitionLookup', lookupRateLimit, (req: Request<{}, {}, LookupRequest>, res: Response) => {
   const { token } = req.body;
 
   // Validate input

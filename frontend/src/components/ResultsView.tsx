@@ -1,6 +1,7 @@
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, CircleHelp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Segment } from './Segment';
+import { ThemeToggle } from './ThemeToggle';
 import type { ParsedSegment } from '@/types';
 
 interface ResultsViewProps {
@@ -8,6 +9,7 @@ interface ResultsViewProps {
   segments: ParsedSegment[];
   isLoading: boolean;
   onBack: () => void;
+  onHelpClick: () => void;
 }
 
 export function ResultsView({
@@ -15,6 +17,7 @@ export function ResultsView({
   segments,
   isLoading,
   onBack,
+  onHelpClick,
 }: ResultsViewProps) {
   return (
     <div className="min-h-screen p-4">
@@ -24,6 +27,14 @@ export function ResultsView({
           <ArrowLeft className="size-4 mr-1" />
           Back
         </Button>
+      </div>
+
+      {/* Header controls */}
+      <div className="fixed top-4 right-4 z-10 flex items-center gap-1">
+        <Button variant="ghost" size="icon" onClick={onHelpClick} title="Help">
+          <CircleHelp className="size-5" />
+        </Button>
+        <ThemeToggle />
       </div>
 
       {/* Main content */}

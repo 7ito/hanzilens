@@ -144,15 +144,21 @@ remake/backend/
 - [x] useParse hook (`src/hooks/useParse.ts`)
 - [x] App with view routing (`src/App.tsx`)
 
-### Phase 6: Polish & Documentation [CURRENT]
+### Phase 6: Polish & Documentation [COMPLETED]
 
-1. Dark mode toggle
-2. Help/Info dialog
-3. Rate limiting middleware
-4. Error boundaries
-5. Update documentation
+1. ~~Dark mode toggle (system preference default, localStorage persistence)~~
+2. ~~Help/Info dialog (first-visit trigger, example sentence)~~
+3. ~~Rate limiting middleware (100 req/min parse, 300 req/min lookup)~~
+4. ~~Error boundaries (React ErrorBoundary + backend error handler)~~
+5. ~~Update documentation (README.md)~~
 
-**Deliverables:** Production-ready application
+**Deliverables:**
+- [x] ThemeToggle component (`src/components/ThemeToggle.tsx`)
+- [x] HelpDialog component (`src/components/HelpDialog.tsx`)
+- [x] Rate limiting middleware (`src/middleware/rateLimit.ts`)
+- [x] Error boundary (`src/components/ErrorBoundary.tsx`)
+- [x] Backend error handler (`src/middleware/errorHandler.ts`)
+- [x] README.md with setup instructions
 
 ---
 

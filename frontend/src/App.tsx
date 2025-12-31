@@ -1,12 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { InputView } from '@/components/InputView';
 import { ResultsView } from '@/components/ResultsView';
+import { HelpDialog } from '@/components/HelpDialog';
 import { useParse } from '@/hooks/useParse';
 import type { ViewState } from '@/types';
 
+const HAS_VISITED_KEY = 'hanzilens-has-visited';
+
 export function App() {
   const [view, setView] = useState<ViewState>('input');
+  const [showHelp, setShowHelp] = useState(false);
   const { isLoading, translation, segments, parse, reset } = useParse();
+
+  // Show help dialog on first visit
+  useEffect(() => {
+    const hasVisited = localStorage.getItem(HAS_VISITED_KEY);
+    if (!hasVisited) {
+      setShowHelp(true);
+      localStorage.setItem(HAS_VISITED_KEY, 'true');
+    }
+  }, []);
 
   const handleSubmit = async (sentence: string) => {
     setView('results');
@@ -18,18 +31,33 @@ export function App() {
     setView('input');
   };
 
+  const handleHelpClick = () => {
+    setShowHelp(true);
+  };
+
+  const handleHelpClose = () => {
+    setShowHelp(false);
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {view === 'input' ? (
-        <InputView onSubmit={handleSubmit} isLoading={isLoading} />
+        <InputView
+          onSubmit={handleSubmit}
+          isLoading={isLoading}
+          onHelpClick={handleHelpClick}
+        />
       ) : (
         <ResultsView
           translation={translation}
           segments={segments}
           isLoading={isLoading}
           onBack={handleBack}
+          onHelpClick={handleHelpClick}
         />
       )}
+
+      <HelpDialog open={showHelp} onClose={handleHelpClose} />
     </div>
   );
 }

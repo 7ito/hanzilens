@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { streamParse, isConfigured, getConfigStatus } from '../services/ai.js';
 import { validateChineseInput, ValidatedRequest } from '../middleware/validation.js';
+import { parseRateLimit } from '../middleware/rateLimit.js';
 
 const router = Router();
 
@@ -17,7 +18,7 @@ const router = Router();
  * - data: {"choices":[{"delta":{"content":"..."}}]}
  * - data: [DONE]
  */
-router.post('/parse', validateChineseInput, async (req: ValidatedRequest, res: Response) => {
+router.post('/parse', parseRateLimit, validateChineseInput, async (req: ValidatedRequest, res: Response) => {
   const sentence = req.validatedText!;
 
   // Check if AI is configured

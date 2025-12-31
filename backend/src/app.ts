@@ -3,6 +3,7 @@ import cors from 'cors';
 import { config } from './config/index.js';
 import dictionaryRouter from './routes/dictionary.js';
 import parseRouter from './routes/parse.js';
+import { errorHandler } from './middleware/errorHandler.js';
 import { isConfigured, getConfigStatus } from './services/ai.js';
 
 const app = express();
@@ -29,6 +30,9 @@ app.get('/', (_req, res) => {
 // Routes
 app.use(dictionaryRouter);
 app.use(parseRouter);
+
+// Error handler (must be last)
+app.use(errorHandler);
 
 // Start server
 app.listen(config.port, () => {

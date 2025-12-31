@@ -3,7 +3,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { hasChineseText } from '@/lib/api';
-import { Loader2 } from 'lucide-react';
+import { Loader2, CircleHelp } from 'lucide-react';
+import { ThemeToggle } from './ThemeToggle';
 
 const CHAR_LIMIT = 150;
 const MIN_CHINESE_RATIO = 0.25;
@@ -11,9 +12,10 @@ const MIN_CHINESE_RATIO = 0.25;
 interface InputViewProps {
   onSubmit: (sentence: string) => void;
   isLoading: boolean;
+  onHelpClick: () => void;
 }
 
-export function InputView({ onSubmit, isLoading }: InputViewProps) {
+export function InputView({ onSubmit, isLoading, onHelpClick }: InputViewProps) {
   const [text, setText] = useState('');
   const [isValid, setIsValid] = useState(false);
 
@@ -38,7 +40,15 @@ export function InputView({ onSubmit, isLoading }: InputViewProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4 relative">
+      {/* Header controls */}
+      <div className="absolute top-4 right-4 flex items-center gap-1">
+        <Button variant="ghost" size="icon" onClick={onHelpClick} title="Help">
+          <CircleHelp className="size-5" />
+        </Button>
+        <ThemeToggle />
+      </div>
+
       <Card className="w-full max-w-2xl">
         <CardContent className="p-6 space-y-4">
           {/* Title */}
