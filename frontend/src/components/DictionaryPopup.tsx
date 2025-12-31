@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { lookupDefinition } from '@/lib/api';
 import { convertPinyin, getToneColor } from '@/lib/pinyin';
+import { getNextZIndex } from '@/lib/zIndex';
 import type { DictionaryEntry, LookupResponse } from '@/types';
 
 interface DictionaryPopupProps {
@@ -63,6 +64,7 @@ export function DictionaryPopup({ token, onClose }: DictionaryPopupProps) {
   const [data, setData] = useState<LookupResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [zIndex, setZIndex] = useState(() => getNextZIndex());
   const nodeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,10 +95,28 @@ export function DictionaryPopup({ token, onClose }: DictionaryPopupProps) {
     };
   }, [token]);
 
+  // Bring popup to front when clicked/touched
+  const bringToFront = () => {
+    setZIndex(getNextZIndex());
+  };
+
   return (
-    <Draggable handle=".drag-handle" bounds="body" nodeRef={nodeRef}>
-      <div ref={nodeRef} className="absolute z-50 top-full left-1/2 -translate-x-1/2 mt-2">
-        <Card className="w-[300px] md:w-[400px] shadow-xl border-2 border-accent/30">
+    <Draggable 
+      handle=".drag-handle" 
+      bounds="body" 
+      nodeRef={nodeRef}
+      onStart={bringToFront}
+    >
+      <div
+        ref={nodeRef}
+        className="absolute top-full left-1/2 -translate-x-1/2 mt-2"
+        style={{ zIndex }}
+        onMouseDown={bringToFront}
+      >
+        <Card 
+          className="w-[300px] md:w-[400px] shadow-xl border-2 border-accent/30"
+          onMouseDown={bringToFront}
+        >
           {/* Draggable header */}
           <CardHeader className="drag-handle cursor-move py-2 px-3 border-b">
             <div className="flex items-center justify-between">

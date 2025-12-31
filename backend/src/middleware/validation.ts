@@ -4,6 +4,12 @@ import { config } from '../config/index.js';
 // Regex to match Chinese characters (CJK Unified Ideographs)
 const CHINESE_CHAR_REGEX = /[\u4e00-\u9fff]/g;
 
+// Regex to match CJK punctuation that should be excluded from ratio calculation
+// - CJK Symbols and Punctuation: U+3000-U+303F (。、「」『』【】《》〈〉 etc.)
+// - Halfwidth and Fullwidth Forms: U+FF00-U+FFEF (，；： fullwidth punctuation)
+// - General Punctuation subset: U+2018-U+201F (curly quotes used in CJK)
+const CJK_PUNCTUATION_REGEX = /[\u3000-\u303f\uff00-\uffef\u2018-\u201f]/g;
+
 /**
  * Count Chinese characters in a string
  */
@@ -13,11 +19,28 @@ function countChineseChars(text: string): number {
 }
 
 /**
- * Calculate the ratio of Chinese characters in a string
+ * Count CJK punctuation characters in a string
+ */
+function countCjkPunctuation(text: string): number {
+  const matches = text.match(CJK_PUNCTUATION_REGEX);
+  return matches ? matches.length : 0;
+}
+
+/**
+ * Calculate the ratio of Chinese characters in a string.
+ * CJK punctuation is excluded from the denominator so it doesn't
+ * count against the Chinese ratio (e.g., 《》 won't reduce the ratio).
  */
 function getChineseRatio(text: string): number {
   if (text.length === 0) return 0;
-  return countChineseChars(text) / text.length;
+  
+  const cjkPunctuationCount = countCjkPunctuation(text);
+  const effectiveLength = text.length - cjkPunctuationCount;
+  
+  // If the text is only CJK punctuation, consider it valid
+  if (effectiveLength === 0) return 1;
+  
+  return countChineseChars(text) / effectiveLength;
 }
 
 /**
