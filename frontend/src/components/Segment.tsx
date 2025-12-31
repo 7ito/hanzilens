@@ -33,11 +33,22 @@ export function Segment({ segment }: SegmentProps) {
     }
   };
 
-  // For punctuation or non-Chinese text, render simply
+  // For punctuation or non-Chinese text, render with same structure as clickable
+  // segments to maintain vertical alignment (empty pinyin space + character + empty definition)
   if (!isClickable) {
     return (
-      <div className="flex flex-col items-center justify-center px-1">
-        <div className="text-2xl md:text-3xl lg:text-4xl text-foreground">{token}</div>
+      <div className="flex flex-col items-center px-1 py-2">
+        {/* Pinyin + Character structure matching clickable segments */}
+        <div className="flex flex-row items-end">
+          <div className="flex flex-col items-center">
+            {/* Empty pinyin space with same styling as clickable segments */}
+            <span className="text-sm md:text-base lg:text-lg font-medium">&nbsp;</span>
+            {/* Character/punctuation */}
+            <span className="text-2xl md:text-3xl lg:text-4xl text-foreground">{token}</span>
+          </div>
+        </div>
+        {/* Empty definition space with same styling */}
+        <div className="text-xs md:text-sm text-muted-foreground mt-1">&nbsp;</div>
       </div>
     );
   }
