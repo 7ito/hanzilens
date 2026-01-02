@@ -1,3 +1,5 @@
+# OUTDATED: HanziLens has gone through a remake kept under a new repository
+
 # HanziLens
 HanziLens provides an intuitive visualization for dissecting Chinese sentences. The visual breakdown can help in understanding sentence structure and vocabulary in context. 
 
