@@ -12,6 +12,7 @@ const posthogHost = import.meta.env.VITE_POSTHOG_HOST || "https://us.i.posthog.c
 
 const posthogOptions = {
   api_host: posthogHost,
+  ui_host: "https://us.posthog.com", // Required when using reverse proxy
   // Autocapture settings
   autocapture: true,
   capture_pageview: false, // We handle this manually since there's no router
