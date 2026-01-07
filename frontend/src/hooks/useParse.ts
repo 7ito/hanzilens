@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { IncompleteJsonParser } from 'incomplete-json-parser';
+import posthog from 'posthog-js';
 import { startParse } from '@/lib/api';
+import { AnalyticsEvents } from '@/hooks/useAnalytics';
 import type { ParsedSegment, TranslationPart, ParseInput } from '@/types';
 
 interface ParseState {
@@ -51,6 +53,7 @@ export function useParse(): UseParseResult {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     let contentBuffer = '';
+    const startTime = performance.now();
 
     try {
       const response = await startParse(input);
@@ -78,6 +81,11 @@ export function useParse(): UseParseResult {
                 isLoading: false,
                 error: final.message || 'No Chinese text found in image',
               }));
+              // Track parse failure
+              posthog.capture(AnalyticsEvents.PARSE_FAILED, {
+                error: 'no_chinese_text',
+                duration_ms: Math.round(performance.now() - startTime),
+              });
               break;
             }
             
@@ -91,6 +99,13 @@ export function useParse(): UseParseResult {
                 : prev.translationParts,
               isLoading: false,
             }));
+            
+            // Track successful parse
+            posthog.capture(AnalyticsEvents.PARSE_COMPLETED, {
+              segment_count: final.segments?.length || 0,
+              has_translation: !!final.translation,
+              duration_ms: Math.round(performance.now() - startTime),
+            });
           } catch {
             // If final parse fails, keep what we have
             setState((prev) => ({ ...prev, isLoading: false }));
@@ -154,11 +169,19 @@ export function useParse(): UseParseResult {
         return;
       }
 
+      const errorMessage = error instanceof Error ? error.message : 'Failed to parse';
+      
       setState((prev) => ({
         ...prev,
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to parse',
+        error: errorMessage,
       }));
+      
+      // Track parse failure
+      posthog.capture(AnalyticsEvents.PARSE_FAILED, {
+        error: errorMessage,
+        duration_ms: Math.round(performance.now() - startTime),
+      });
     } finally {
       abortControllerRef.current = null;
     }

@@ -1,5 +1,7 @@
 import { useState, useRef } from 'react';
+import posthog from 'posthog-js';
 import { convertPinyin, getToneColor } from '@/lib/pinyin';
+import { AnalyticsEvents } from '@/hooks/useAnalytics';
 import type { ParsedSegment } from '@/types';
 import { DictionaryPopup } from './DictionaryPopup';
 
@@ -58,6 +60,11 @@ export function Segment({
         const x = rect.left + rect.width / 2 - POPUP_WIDTH / 2;
         const y = rect.bottom + 8; // 8px gap below segment
         setPopupPosition({ x, y });
+        
+        // Track dictionary open event
+        posthog.capture(AnalyticsEvents.DICTIONARY_OPENED, {
+          word: token,
+        });
       }
       setShowPopup(!showPopup);
     }

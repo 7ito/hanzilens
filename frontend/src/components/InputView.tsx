@@ -7,6 +7,7 @@ import { Loader2, CircleHelp } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { ImageInput } from './ImageInput';
 import { LogoA } from './LogoA';
+import { useAnalytics, AnalyticsEvents } from '@/hooks/useAnalytics';
 import type { ParseInput } from '@/types';
 
 const CHAR_LIMIT = 150;
@@ -32,6 +33,7 @@ export function InputView({ onSubmit, isLoading, onHelpClick }: InputViewProps) 
 	const [text, setText] = useState('');
 	const [selectedImage, setSelectedImage] = useState<string | null>(null);
 	const [isTextValid, setIsTextValid] = useState(false);
+	const { trackEvent } = useAnalytics();
 
 	// Rotating placeholder state
 	const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -75,8 +77,15 @@ export function InputView({ onSubmit, isLoading, onHelpClick }: InputViewProps) 
 		if (!canSubmit) return;
 
 		if (selectedImage) {
+			trackEvent(AnalyticsEvents.PARSE_SUBMITTED, {
+				input_type: 'image',
+			});
 			onSubmit({ type: 'image', image: selectedImage });
 		} else {
+			trackEvent(AnalyticsEvents.PARSE_SUBMITTED, {
+				input_type: 'text',
+				text_length: text.trim().length,
+			});
 			onSubmit({ type: 'text', sentence: text.trim() });
 		}
 	};

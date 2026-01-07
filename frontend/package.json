@@ -17,6 +17,7 @@
     "clsx": "^2.1.1",
     "incomplete-json-parser": "^1.1.4",
     "lucide-react": "^0.562.0",
+    "posthog-js": "^1.315.0",
     "radix-ui": "^1.4.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
+import posthog from 'posthog-js';
 import { Button } from '@/components/ui/button';
+import { AnalyticsEvents } from '@/hooks/useAnalytics';
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -43,7 +45,13 @@ export function ThemeToggle() {
     // Cycle: system -> light -> dark -> system
     // Or simpler: just toggle between light and dark (more intuitive)
     const currentResolved = theme === 'system' ? getSystemTheme() : theme;
-    setTheme(currentResolved === 'dark' ? 'light' : 'dark');
+    const newTheme = currentResolved === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    
+    // Track theme toggle
+    posthog.capture(AnalyticsEvents.THEME_TOGGLED, {
+      theme: newTheme,
+    });
   };
 
   const isDark = theme === 'system' ? getSystemTheme() === 'dark' : theme === 'dark';
