@@ -18,7 +18,8 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
-    "lru-cache": "^11.2.4"
+    "lru-cache": "^11.2.4",
+    "pinyin-pro": "^3.27.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
