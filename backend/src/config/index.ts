@@ -41,6 +41,12 @@ export const config = {
     allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
   },
 
+  // OCR settings (for image parsing)
+  ocr: {
+    maxTextLength: 200,    // Truncate extracted text to this length
+    minChineseChars: 2,    // Minimum Chinese characters required
+  },
+
   // Input validation
   validation: {
     maxSentenceLength: 500, // Maximum characters in a sentence

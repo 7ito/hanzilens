@@ -115,54 +115,43 @@ Output:
   ]
 }`;
 
-const VISION_PROMPT = `You are a Chinese language OCR and segmentation assistant. Your task is to extract Chinese text from an image and segment it into individual words.
+// Simple OCR-only prompt for vision model (Stage 1 of two-stage pipeline)
+const VISION_OCR_PROMPT = `Extract all Chinese text visible in this image.
 
-## Input
-You will receive an image that may contain Chinese text.
+Rules:
+- Include ALL Chinese text you can see
+- Preserve natural reading order (top-to-bottom, left-to-right)
+- Include punctuation if present
+- If multiple text regions exist, separate them with spaces
 
-## Task
-1. Extract ALL Chinese text visible in the image
-2. If multiple text regions exist, concatenate them in natural reading order (top-to-bottom, left-to-right)
-3. Segment the extracted text into words with pinyin and definitions
-4. Map the segments to an English translation
+Return JSON format:
+{"text": "<extracted Chinese text>"}
 
-## Output Format
-Return a JSON object with these fields IN THIS EXACT ORDER:
-1. "translation": A natural English translation of the extracted text
-2. "segments": An array of word segments with unique IDs
-3. "translationParts": An array of translation fragments with segment references
+If NO Chinese text is found:
+{"text": "", "error": "no_chinese_text", "message": "No Chinese text found in image"}`;
 
-## Segment Format
-Each segment must have:
-- "id": A unique integer starting from 0
-- "token": The original Chinese text
-- "pinyin": Pronunciation with tone numbers (1-5), spaces between syllables
-- "definition": The contextual meaning (concise, 1-5 words)
+// Regex to match Chinese characters (CJK Unified Ideographs)
+const CHINESE_CHAR_REGEX = /[\u4e00-\u9fff]/g;
 
-## Translation Parts Format
-- "text": The English text fragment
-- "segmentIds": Array of segment IDs this text corresponds to
+/**
+ * Validate OCR-extracted text has sufficient Chinese content
+ */
+function validateOcrText(text: string): { valid: boolean; error?: string } {
+  const chineseChars = text.match(CHINESE_CHAR_REGEX) || [];
+  if (chineseChars.length < config.ocr.minChineseChars) {
+    return { valid: false, error: 'Could not extract sufficient Chinese text from image' };
+  }
+  return { valid: true };
+}
 
-## Pinyin Rules
-- Use tone numbers: ni3 hao3, bu4 shi4, ma5
-- Use u: for ü: nu:3, lü4
-- Separate syllables with spaces
-
-## Special Cases
-- Punctuation: {"id": N, "token": "。", "pinyin": "", "definition": ""}
-- Numbers: {"id": N, "token": "2024", "pinyin": "", "definition": ""}
-- If NO Chinese text is found, return: {"error": "no_chinese_text", "message": "No Chinese text found in image"}
-
-## Example Output
-{
-  "translation": "Hello",
-  "segments": [
-    {"id": 0, "token": "你好", "pinyin": "ni3 hao3", "definition": "hello"}
-  ],
-  "translationParts": [
-    {"text": "Hello", "segmentIds": [0]}
-  ]
-}`;
+/**
+ * OCR result from vision model
+ */
+interface OcrResult {
+  text: string;
+  error?: string;
+  message?: string;
+}
 
 /**
  * Validate that OpenRouter is configured for text parsing
@@ -259,12 +248,14 @@ export async function streamParse(sentence: string): Promise<Response> {
 }
 
 /**
- * Stream a vision chat completion from OpenRouter for image OCR.
- * Returns a ReadableStream that yields SSE chunks.
+ * Extract Chinese text from an image using vision model (OCR only).
+ * Non-streaming request for speed.
  * 
  * @param imageDataUrl - Base64 data URL (e.g., "data:image/jpeg;base64,...")
+ * @returns Extracted Chinese text (validated and truncated)
+ * @throws Error if OCR fails or validation fails
  */
-export async function streamParseImage(imageDataUrl: string): Promise<Response> {
+async function extractTextFromImage(imageDataUrl: string): Promise<string> {
   if (!isVisionConfigured()) {
     throw new Error(`OpenRouter vision not configured: ${getVisionConfigStatus()}`);
   }
@@ -290,7 +281,7 @@ export async function streamParseImage(imageDataUrl: string): Promise<Response> 
             content: [
               {
                 type: 'text',
-                text: VISION_PROMPT,
+                text: VISION_OCR_PROMPT,
               },
               {
                 type: 'image_url',
@@ -301,7 +292,7 @@ export async function streamParseImage(imageDataUrl: string): Promise<Response> 
             ],
           },
         ],
-        stream: true,
+        stream: false, // Non-streaming for OCR stage
         response_format: { type: 'json_object' },
         // Prioritize Fireworks (highest throughput provider at ~77 tps)
         provider: {
@@ -315,12 +306,44 @@ export async function streamParseImage(imageDataUrl: string): Promise<Response> 
 
     if (!response.ok) {
       const errorBody = await response.text();
-      // Log full error for debugging, but don't expose to client
       console.error(`OpenRouter Vision API error (${response.status}):`, errorBody);
       throw new Error('AI vision service temporarily unavailable');
     }
 
-    return response;
+    // Parse the response
+    const data = await response.json();
+    const content = data?.choices?.[0]?.message?.content;
+    
+    if (!content) {
+      throw new Error('No content in vision model response');
+    }
+
+    // Parse the JSON content from the model
+    let ocrResult: OcrResult;
+    try {
+      ocrResult = JSON.parse(content);
+    } catch {
+      console.error('Failed to parse OCR JSON response:', content);
+      throw new Error('Could not extract sufficient Chinese text from image');
+    }
+
+    // Check for error response from model
+    if (ocrResult.error) {
+      throw new Error('Could not extract sufficient Chinese text from image');
+    }
+
+    const extractedText = (ocrResult.text || '').trim();
+
+    // Validate the extracted text
+    const validation = validateOcrText(extractedText);
+    if (!validation.valid) {
+      throw new Error(validation.error || 'Could not extract sufficient Chinese text from image');
+    }
+
+    // Truncate to max length if needed
+    const truncatedText = extractedText.slice(0, config.ocr.maxTextLength);
+
+    return truncatedText;
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
@@ -328,4 +351,25 @@ export async function streamParseImage(imageDataUrl: string): Promise<Response> 
     }
     throw error;
   }
+}
+
+/**
+ * Two-stage image parsing:
+ * 1. OCR: Extract Chinese text from image (vision model, non-streaming)
+ * 2. Parse: Segment and analyze text (text model, streaming)
+ * 
+ * @param imageDataUrl - Base64 data URL (e.g., "data:image/jpeg;base64,...")
+ * @returns Object with streaming response and extracted text (for pinyin correction)
+ */
+export async function streamParseImage(imageDataUrl: string): Promise<{
+  response: Response;
+  extractedText: string;
+}> {
+  // Stage 1: OCR - extract text from image
+  const extractedText = await extractTextFromImage(imageDataUrl);
+  
+  // Stage 2: Parse - use text model for linguistic analysis
+  const response = await streamParse(extractedText);
+  
+  return { response, extractedText };
 }

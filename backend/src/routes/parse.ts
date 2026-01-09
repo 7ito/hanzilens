@@ -316,60 +316,7 @@ async function streamResponseWithCorrection(
   }
 }
 
-/**
- * Stream an AI response directly to the client (no correction).
- * Used for vision/image parsing where pinyin correction doesn't apply.
- */
-async function streamResponseDirect(
-  aiResponse: Response, 
-  req: Request, 
-  res: ExpressResponse
-): Promise<void> {
-  if (!aiResponse.body) {
-    res.status(502).json({
-      error: 'Bad Gateway',
-      message: 'No response body from AI service',
-    });
-    return;
-  }
 
-  // Set SSE headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-
-  const reader = aiResponse.body.getReader();
-  const decoder = new TextDecoder();
-
-  let clientDisconnected = false;
-
-  req.on('close', () => {
-    clientDisconnected = true;
-    reader.cancel().catch(() => {});
-  });
-
-  try {
-    while (!clientDisconnected) {
-      const { done, value } = await reader.read();
-      
-      if (done) {
-        res.end();
-        break;
-      }
-
-      const chunk = decoder.decode(value, { stream: true });
-      res.write(chunk);
-    }
-  } catch (streamError) {
-    if (!clientDisconnected) {
-      console.error('Error during streaming:', streamError);
-    }
-    if (!res.writableEnded) {
-      res.end();
-    }
-  }
-}
 
 /**
  * POST /parse
@@ -395,7 +342,7 @@ router.post('/parse', parseRateLimit, validateParseInput, async (req: ValidatedR
     let aiResponse: Response;
 
     if (isImageInput) {
-      // Image input - use vision model
+      // Image input - two-stage pipeline: OCR then parse
       if (!isVisionConfigured()) {
         res.status(503).json({
           error: 'Service Unavailable',
@@ -404,10 +351,15 @@ router.post('/parse', parseRateLimit, validateParseInput, async (req: ValidatedR
         return;
       }
 
-      aiResponse = await streamParseImage(req.validatedImage!);
+      // Stage 1: OCR extracts text, Stage 2: Parse with text model
+      const { response, extractedText } = await streamParseImage(req.validatedImage!);
+      aiResponse = response;
       
-      // Vision - stream directly without pinyin correction
-      await streamResponseDirect(aiResponse, req, res);
+      // Build pinyin map from OCR'd text for correction
+      const pinyinMap = buildPinyinMap(extractedText);
+      
+      // Stream with pinyin correction (same as text input now!)
+      await streamResponseWithCorrection(aiResponse, req, res, pinyinMap);
     } else {
       // Text input - use text model
       if (!isConfigured()) {
