@@ -20,6 +20,7 @@ import type {
   EvalSegment,
   CombinedPinyinStats,
   PinyinStats,
+  PinyinCorrectionDetail,
 } from './types.js';
 
 const DEFAULT_SERVER_URL = 'http://localhost:5000';
@@ -164,7 +165,10 @@ async function evaluateSentence(
 /**
  * Calculate combined pinyin stats for both raw and corrected pinyin
  */
-function calculateCombinedPinyinStats(evaluations: SegmentEvaluation[]): CombinedPinyinStats {
+function calculateCombinedPinyinStats(
+  evaluations: SegmentEvaluation[],
+  sentenceResults: SentenceResult[]
+): CombinedPinyinStats {
   // Stats for corrected pinyin (production behavior)
   const correctedValidations = evaluations.map(e => e.pinyinValidation);
   const correctedStats = calculatePinyinStats(correctedValidations);
@@ -175,15 +179,67 @@ function calculateCombinedPinyinStats(evaluations: SegmentEvaluation[]): Combine
     .map(e => e.rawPinyinValidation!);
   const rawStats = calculatePinyinStats(rawValidations);
 
+  // Build a map of segmentId to sentenceId for correction details
+  const segmentToSentence = new Map<string, string>();
+  for (const sr of sentenceResults) {
+    for (const seg of sr.segmentEvaluations) {
+      // Use a composite key since segmentId is per-sentence
+      segmentToSentence.set(`${sr.sentenceId}:${seg.segmentId}`, sr.sentenceId);
+    }
+  }
+
+  // Analyze corrections in detail
+  let improvements = 0;
+  let degradations = 0;
+  let neutral = 0;
+  const sampleDegradations: PinyinCorrectionDetail[] = [];
+
+  // Track which sentence each evaluation belongs to
+  let evalIndex = 0;
+  for (const sr of sentenceResults) {
+    for (const e of sr.segmentEvaluations) {
+      if (e.rawPinyin !== e.correctedPinyin && e.correctedPinyin !== '') {
+        const rawWasValid = e.rawPinyinValidation?.isValid ?? false;
+        const correctedIsValid = e.pinyinValidation.isValid;
+
+        const detail: PinyinCorrectionDetail = {
+          token: e.token,
+          rawPinyin: e.rawPinyin,
+          correctedPinyin: e.correctedPinyin,
+          wasImprovement: !rawWasValid && correctedIsValid,
+          wasDegradation: rawWasValid && !correctedIsValid,
+          sentenceId: sr.sentenceId,
+        };
+
+        if (!rawWasValid && correctedIsValid) {
+          improvements++;
+        } else if (rawWasValid && !correctedIsValid) {
+          degradations++;
+          // Keep sample of degradations for debugging
+          if (sampleDegradations.length < 20) {
+            sampleDegradations.push(detail);
+          }
+        } else {
+          neutral++;
+        }
+      }
+      evalIndex++;
+    }
+  }
+
   // Count how many corrections were made
-  const correctionsMade = evaluations.filter(
-    e => e.rawPinyin !== e.correctedPinyin && e.correctedPinyin !== ''
-  ).length;
+  const correctionsMade = improvements + degradations + neutral;
 
   return {
     corrected: correctedStats,
     raw: rawStats,
     correctionsMade,
+    correctionDetails: {
+      improvements,
+      degradations,
+      neutral,
+      sampleDegradations,
+    },
   };
 }
 
@@ -203,8 +259,8 @@ function calculateSummary(
     allEvaluations.push(...s.segmentEvaluations);
   }
 
-  // Pinyin stats (now includes both raw and corrected)
-  const pinyinStats = calculateCombinedPinyinStats(allEvaluations);
+  // Pinyin stats (now includes both raw and corrected, plus correction details)
+  const pinyinStats = calculateCombinedPinyinStats(allEvaluations, sentences);
 
   // Semantic stats (if enabled)
   const semanticStats = semanticEnabled ? calculateSemanticStats(allEvaluations) : undefined;
@@ -336,6 +392,25 @@ export function printSummary(result: EvaluationResult): void {
   console.log(`  Invalid: ${summary.pinyinStats.raw.invalid}`);
   console.log(`  Accuracy: ${(summary.pinyinStats.raw.accuracy * 100).toFixed(1)}%`);
   console.log(`  Corrections made: ${summary.pinyinStats.correctionsMade}`);
+
+  // Show correction breakdown if available
+  if (summary.pinyinStats.correctionDetails) {
+    const { improvements, degradations, neutral, sampleDegradations } = summary.pinyinStats.correctionDetails;
+    console.log(`\nCorrection Analysis:`);
+    console.log(`  Improvements: ${improvements} (raw invalid -> corrected valid)`);
+    console.log(`  Degradations: ${degradations} (raw valid -> corrected invalid)`);
+    console.log(`  Neutral: ${neutral} (both same validity)`);
+    
+    if (sampleDegradations.length > 0) {
+      console.log(`\n  Sample Degradations (${sampleDegradations.length}):`);
+      for (const d of sampleDegradations.slice(0, 10)) {
+        console.log(`    ${d.token}: "${d.rawPinyin}" -> "${d.correctedPinyin}" [${d.sentenceId}]`);
+      }
+      if (sampleDegradations.length > 10) {
+        console.log(`    ... and ${sampleDegradations.length - 10} more`);
+      }
+    }
+  }
 
   if (summary.semanticStats) {
     console.log(`\nSemantic Evaluation:`);

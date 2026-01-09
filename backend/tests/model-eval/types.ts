@@ -164,6 +164,21 @@ export interface PinyinStats {
 }
 
 /**
+ * Details about a specific pinyin correction
+ */
+export interface PinyinCorrectionDetail {
+  token: string;
+  rawPinyin: string;
+  correctedPinyin: string;
+  /** Whether the correction improved accuracy (based on CC-CEDICT) */
+  wasImprovement: boolean;
+  /** Whether the correction degraded accuracy (raw was valid, corrected is invalid) */
+  wasDegradation: boolean;
+  /** The sentence this correction occurred in */
+  sentenceId: string;
+}
+
+/**
  * Combined pinyin statistics showing both raw AI and corrected accuracy
  */
 export interface CombinedPinyinStats {
@@ -173,6 +188,14 @@ export interface CombinedPinyinStats {
   raw: PinyinStats;
   /** Number of segments where correction changed the pinyin */
   correctionsMade: number;
+  /** Detailed breakdown of corrections (improvements vs degradations) */
+  correctionDetails?: {
+    improvements: number;
+    degradations: number;
+    neutral: number;  // Changed but neither improved nor degraded (both valid or both invalid)
+    /** Sample of degradations for debugging (limited to 20) */
+    sampleDegradations: PinyinCorrectionDetail[];
+  };
 }
 
 /**

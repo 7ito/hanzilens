@@ -189,3 +189,50 @@ export function clearCaches(): void {
   lookupCache.clear();
   segmentCache.clear();
 }
+
+// Dedicated cache for single-character pinyin readings (used by pinyinCorrection)
+const charPinyinCache = new LRUCache<string, string[]>({
+  max: config.cache.maxSize,
+});
+
+/**
+ * Get all valid pinyin readings for a single character.
+ * Optimized for the pinyin correction use case.
+ * 
+ * @param char - Single Chinese character
+ * @returns Array of pinyin strings (e.g., ["you3", "you5"]), or empty array if not found
+ */
+export function getCharacterReadings(char: string): string[] {
+  // Check cache first
+  const cached = charPinyinCache.get(char);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const entries = lookup(char);
+  const readings = entries.map(e => e.pinyin);
+  
+  // Cache the result (even if empty)
+  charPinyinCache.set(char, readings);
+  
+  return readings;
+}
+
+/**
+ * Get the pinyin for a token if it exists in the dictionary.
+ * Returns the first matching entry's pinyin, or null if not found.
+ * 
+ * @param token - Chinese token (can be multi-character)
+ * @returns Pinyin string (e.g., "peng2 you5") or null if not in dictionary
+ */
+export function getTokenPinyin(token: string): string | null {
+  const entries = lookup(token);
+  return entries.length > 0 ? entries[0].pinyin : null;
+}
+
+/**
+ * Clear character pinyin cache (for testing)
+ */
+export function clearCharPinyinCache(): void {
+  charPinyinCache.clear();
+}
