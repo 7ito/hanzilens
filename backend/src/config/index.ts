@@ -25,10 +25,12 @@ export const config = {
   // OpenRouter AI settings
   openrouter: {
     apiKey: process.env.OPENROUTER_API_KEY || '',
-    // Set your preferred model in .env, e.g.:
-    // - anthropic/claude-3.5-sonnet (high quality)
-    // - google/gemini-flash-1.5 (fast, cheap)
-    // - qwen/qwen-2.5-72b-instruct (good for Chinese)
+    // Two-stage pipeline models (recommended)
+    // Stage 1: Segmentation - fast, good at Chinese parsing
+    segmentationModel: process.env.OPENROUTER_SEGMENTATION_MODEL || '',
+    // Stage 2: Alignment - better at translation-to-segment mapping
+    alignmentModel: process.env.OPENROUTER_ALIGNMENT_MODEL || '',
+    // Legacy single model (fallback if stage models not set)
     model: process.env.OPENROUTER_MODEL || '',
     // Vision model for image OCR (e.g., openai/gpt-4o, anthropic/claude-sonnet-4)
     visionModel: process.env.OPENROUTER_VISION_MODEL || '',
@@ -55,6 +57,30 @@ export const config = {
 } as const;
 
 /**
+ * Get the model to use for Stage 1 (segmentation).
+ * Falls back to legacy single model if stage models not configured.
+ */
+export function getSegmentationModel(): string {
+  return config.openrouter.segmentationModel || config.openrouter.model;
+}
+
+/**
+ * Get the model to use for Stage 2 (alignment).
+ * Falls back to legacy single model if stage models not configured.
+ */
+export function getAlignmentModel(): string {
+  return config.openrouter.alignmentModel || config.openrouter.model;
+}
+
+/**
+ * Check if two-stage pipeline is explicitly configured.
+ * Returns true if both segmentation and alignment models are set.
+ */
+export function isTwoStageConfigured(): boolean {
+  return !!(config.openrouter.segmentationModel && config.openrouter.alignmentModel);
+}
+
+/**
  * Validate required configuration at startup.
  * Throws an error if critical configuration is missing.
  */
@@ -65,8 +91,18 @@ export function validateConfig(): void {
     errors.push('OPENROUTER_API_KEY is required');
   }
 
-  if (!config.openrouter.model) {
-    errors.push('OPENROUTER_MODEL is required');
+  // Check for two-stage OR single-model config
+  const hasTwoStage = config.openrouter.segmentationModel && config.openrouter.alignmentModel;
+  const hasSingleModel = config.openrouter.model;
+  
+  if (!hasTwoStage && !hasSingleModel) {
+    errors.push('Either OPENROUTER_MODEL or both OPENROUTER_SEGMENTATION_MODEL and OPENROUTER_ALIGNMENT_MODEL must be set');
+  }
+  
+  // Partial two-stage config is an error
+  if ((config.openrouter.segmentationModel && !config.openrouter.alignmentModel) ||
+      (!config.openrouter.segmentationModel && config.openrouter.alignmentModel)) {
+    errors.push('Both OPENROUTER_SEGMENTATION_MODEL and OPENROUTER_ALIGNMENT_MODEL must be set together');
   }
 
   // Vision model is optional - only warn if not set
@@ -81,5 +117,13 @@ export function validateConfig(): void {
     process.exit(1);
   }
 
-  console.log('Configuration validated successfully');
+  // Log which mode we're using
+  if (hasTwoStage) {
+    console.log('Configuration validated: Two-stage pipeline enabled');
+    console.log(`  Segmentation model: ${config.openrouter.segmentationModel}`);
+    console.log(`  Alignment model: ${config.openrouter.alignmentModel}`);
+  } else {
+    console.log('Configuration validated: Single-model mode');
+    console.log(`  Model: ${config.openrouter.model}`);
+  }
 }

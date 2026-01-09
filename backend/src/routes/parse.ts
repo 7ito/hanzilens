@@ -1,6 +1,7 @@
 import { Router, Request, Response as ExpressResponse } from 'express';
 import { 
-  streamParse, 
+  streamSegmentation,
+  getTranslationAlignment,
   streamParseImage, 
   isConfigured, 
   isVisionConfigured, 
@@ -17,6 +18,14 @@ import {
 } from '../services/pinyinCorrection.js';
 
 const router = Router();
+
+/**
+ * Captured data from Stage 1 streaming for use in Stage 2
+ */
+interface CapturedParseResult {
+  translation: string;
+  segments: Array<{ id: number; token: string }>;
+}
 
 /**
  * State machine for real-time pinyin correction in streaming JSON
@@ -216,19 +225,22 @@ function extractDeltaContent(sseData: string): string | null {
  * 
  * This function intercepts the SSE stream and corrects pinyin values
  * in real-time as segments arrive, using a pre-computed pinyin map.
+ * 
+ * Returns captured translation and segments for use in Stage 2 alignment.
+ * Does NOT send [DONE] - caller is responsible for that.
  */
 async function streamResponseWithCorrection(
   aiResponse: Response, 
   req: Request, 
   res: ExpressResponse,
   pinyinMap: PinyinMap
-): Promise<void> {
+): Promise<CapturedParseResult | null> {
   if (!aiResponse.body) {
     res.status(502).json({
       error: 'Bad Gateway',
       message: 'No response body from AI service',
     });
-    return;
+    return null;
   }
 
   // Set SSE headers
@@ -243,6 +255,7 @@ async function streamResponseWithCorrection(
   let clientDisconnected = false;
   let streamState = createStreamState();
   let sseLineBuffer = '';
+  let fullContent = ''; // Capture full JSON content for Stage 2
 
   req.on('close', () => {
     clientDisconnected = true;
@@ -254,13 +267,12 @@ async function streamResponseWithCorrection(
       const { done, value } = await reader.read();
       
       if (done) {
-        // Flush any remaining buffer
+        // Flush any remaining buffer for output (but don't add to fullContent - already there)
         if (streamState.buffer) {
           const sseChunk = `data: {"choices":[{"delta":{"content":${JSON.stringify(streamState.buffer)}}}]}\n`;
           res.write(sseChunk);
         }
-        res.write('data: [DONE]\n');
-        res.end();
+        // Don't send [DONE] here - let caller handle it after Stage 2
         break;
       }
 
@@ -281,7 +293,7 @@ async function streamResponseWithCorrection(
         }
         
         if (trimmedLine === 'data: [DONE]') {
-          // Don't emit [DONE] yet - we'll do it when done is true
+          // Don't emit [DONE] yet - we'll do it after Stage 2
           continue;
         }
         
@@ -289,7 +301,10 @@ async function streamResponseWithCorrection(
         const content = extractDeltaContent(trimmedLine);
         
         if (content !== null) {
-          // Add to buffer and process
+          // Capture full content for later parsing
+          fullContent += content;
+          
+          // Add to buffer and process for pinyin correction
           streamState.buffer += content;
           
           const result = processStreamBuffer(streamState, pinyinMap);
@@ -306,6 +321,21 @@ async function streamResponseWithCorrection(
         }
       }
     }
+
+    // Parse the complete JSON to extract data for Stage 2
+    try {
+      const parsed = JSON.parse(fullContent);
+      return {
+        translation: parsed.translation || '',
+        segments: (parsed.segments || []).map((s: { id: number; token: string }) => ({ 
+          id: s.id, 
+          token: s.token 
+        })),
+      };
+    } catch (parseError) {
+      console.warn('Failed to parse Stage 1 JSON for Stage 2:', parseError);
+      return null;
+    }
   } catch (streamError) {
     if (!clientDisconnected) {
       console.error('Error during streaming:', streamError);
@@ -313,6 +343,7 @@ async function streamResponseWithCorrection(
     if (!res.writableEnded) {
       res.end();
     }
+    return null;
   }
 }
 
@@ -323,26 +354,28 @@ async function streamResponseWithCorrection(
  * 
  * Parse Chinese text into word segments with pinyin and definitions.
  * Accepts either text input or image input (for OCR).
- * Uses AI (OpenRouter) for intelligent segmentation.
+ * Uses a two-stage AI pipeline:
+ *   Stage 1: Segmentation (streaming) - translation + segments
+ *   Stage 2: Alignment (non-streaming) - translationParts
  * 
  * For text input: Applies real-time pinyin correction using pinyin-pro
- * For image input: No pinyin correction (OCR text varies)
+ * For image input: Uses legacy single-model pipeline (TODO: update to two-stage)
  * 
  * Request body: { sentence: string } OR { image: string (base64 data URL) }
  * Response: SSE stream with AI chunks
  * 
- * The stream follows OpenAI's SSE format:
- * - data: {"choices":[{"delta":{"content":"..."}}]}
+ * The stream follows OpenAI's SSE format with an additional event type:
+ * - data: {"choices":[{"delta":{"content":"..."}}]}  (Stage 1 streaming)
+ * - data: {"type":"translationParts","data":[...]}   (Stage 2 result)
  * - data: [DONE]
  */
 router.post('/parse', parseRateLimit, validateParseInput, async (req: ValidatedRequest, res: ExpressResponse) => {
   const isImageInput = !!req.validatedImage;
 
   try {
-    let aiResponse: Response;
-
     if (isImageInput) {
-      // Image input - two-stage pipeline: OCR then parse
+      // Image input - legacy pipeline (OCR then single-model parse)
+      // TODO: Update to three-stage pipeline (OCR → Segmentation → Alignment)
       if (!isVisionConfigured()) {
         res.status(503).json({
           error: 'Service Unavailable',
@@ -351,35 +384,60 @@ router.post('/parse', parseRateLimit, validateParseInput, async (req: ValidatedR
         return;
       }
 
-      // Stage 1: OCR extracts text, Stage 2: Parse with text model
+      // Stage 1: OCR extracts text, Stage 2: Parse with text model (legacy)
       const { response, extractedText } = await streamParseImage(req.validatedImage!);
-      aiResponse = response;
       
       // Build pinyin map from OCR'd text for correction
       const pinyinMap = buildPinyinMap(extractedText);
       
-      // Stream with pinyin correction (same as text input now!)
-      await streamResponseWithCorrection(aiResponse, req, res, pinyinMap);
-    } else {
-      // Text input - use text model
-      if (!isConfigured()) {
-        res.status(503).json({
-          error: 'Service Unavailable',
-          message: `AI service not configured: ${getConfigStatus()}`,
-        });
-        return;
-      }
-
-      const sentence = req.validatedText!;
+      // Stream with pinyin correction
+      await streamResponseWithCorrection(response, req, res, pinyinMap);
       
-      // Build pinyin map for context-aware correction (~5ms)
-      const pinyinMap = buildPinyinMap(sentence);
-      
-      aiResponse = await streamParse(sentence);
-      
-      // Text - stream with real-time pinyin correction
-      await streamResponseWithCorrection(aiResponse, req, res, pinyinMap);
+      // Send [DONE] for legacy pipeline
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return;
     }
+
+    // Text input - NEW two-stage pipeline
+    if (!isConfigured()) {
+      res.status(503).json({
+        error: 'Service Unavailable',
+        message: `AI service not configured: ${getConfigStatus()}`,
+      });
+      return;
+    }
+
+    const sentence = req.validatedText!;
+    
+    // Build pinyin map for context-aware correction (~5ms)
+    const pinyinMap = buildPinyinMap(sentence);
+    
+    // Stage 1: Stream segmentation (translation + segments)
+    const segmentationResponse = await streamSegmentation(sentence);
+    const captured = await streamResponseWithCorrection(segmentationResponse, req, res, pinyinMap);
+    
+    // Stage 2: Get alignment (after Stage 1 completes)
+    if (captured && captured.translation && captured.segments.length > 0) {
+      const alignment = await getTranslationAlignment(
+        captured.translation,
+        captured.segments
+      );
+      
+      if (alignment) {
+        // Send translationParts as separate SSE event
+        const event = JSON.stringify({
+          type: 'translationParts',
+          data: alignment.translationParts,
+        });
+        res.write(`data: ${event}\n\n`);
+      }
+      // If alignment fails, we just don't send translationParts - graceful degradation
+    }
+    
+    // Send [DONE] after both stages complete
+    res.write('data: [DONE]\n\n');
+    res.end();
   } catch (error) {
     console.error('Error in /parse:', error);
     
@@ -389,6 +447,12 @@ router.post('/parse', parseRateLimit, validateParseInput, async (req: ValidatedR
         message: error instanceof Error ? error.message : 'An error occurred while parsing',
       });
     } else {
+      // If headers already sent, try to send error and close
+      try {
+        res.write('data: [DONE]\n\n');
+      } catch {
+        // Ignore write errors
+      }
       res.end();
     }
   }

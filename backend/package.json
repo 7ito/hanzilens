@@ -9,7 +9,8 @@
     "import-cedict": "tsx scripts/import-cedict.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "eval:model": "tsx tests/model-eval/runner.ts"
+    "eval:model": "tsx tests/model-eval/runner.ts",
+    "benchmark:timing": "tsx tests/model-eval/timing-benchmark.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",

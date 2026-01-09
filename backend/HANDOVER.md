@@ -511,3 +511,78 @@ After implementation:
 - Better alignment quality from specialized model
 - Segments display faster (Stage 1 only)
 - Graceful degradation if alignment fails
+
+---
+
+## Implementation Status: COMPLETED
+
+The two-stage pipeline has been implemented. Key changes:
+
+### Files Modified
+
+1. **`src/config/index.ts`**
+   - Added `segmentationModel` and `alignmentModel` config fields
+   - Added helper functions: `getSegmentationModel()`, `getAlignmentModel()`, `isTwoStageConfigured()`
+   - Updated `validateConfig()` to support two-stage or single-model config
+
+2. **`src/services/ai.ts`**
+   - Added `SEGMENTATION_PROMPT` (~60 lines, translation + segments only)
+   - Added `ALIGNMENT_PROMPT` (~45 lines, translationParts mapping)
+   - Added `streamSegmentation()` for Stage 1 streaming
+   - Added `segmentationNonStreaming()` for eval endpoint
+   - Added `getTranslationAlignment()` for Stage 2 (returns null on failure)
+
+3. **`src/routes/parse.ts`**
+   - Updated `streamResponseWithCorrection()` to return captured data for Stage 2
+   - Updated route handler to use two-stage pipeline
+   - Stage 2 sends `translationParts` as separate SSE event: `{"type":"translationParts","data":[...]}`
+
+4. **`src/routes/eval.ts`**
+   - Rewritten to use two-stage pipeline
+   - Returns separate token usage for segmentation and alignment
+   - Returns `alignmentValidation` metrics
+
+5. **`frontend/src/hooks/useParse.ts`**
+   - Added handling for `translationParts` SSE event type
+
+6. **`tests/model-eval/types.ts`**
+   - Added `TwoStageUsage`, `AlignmentValidation`, `AlignmentStats` types
+   - Updated `EvalParseResponse` for new response format
+
+7. **`tests/model-eval/evaluator.ts`**
+   - Added `calculateAlignmentStats()` function
+   - Updated to track alignment metrics
+   - Updated `printSummary()` and `compareResults()` to show alignment quality
+
+8. **`.env.example`**
+   - Documented new environment variables
+
+### SSE Protocol
+
+The stream now includes a new event type for Stage 2:
+```
+# Stage 1 - normal streaming
+data: {"choices":[{"delta":{"content":"..."}}]}
+
+# Stage 2 - new event type (sent after Stage 1 completes)
+data: {"type":"translationParts","data":[{"text":"Do","segmentIds":[4]},...]]}
+
+# End
+data: [DONE]
+```
+
+### Configuration
+
+```bash
+# Two-stage (recommended)
+OPENROUTER_SEGMENTATION_MODEL=qwen/qwen3-30b-a3b-instruct
+OPENROUTER_ALIGNMENT_MODEL=xiaomi/mimo-v2-flashfree
+
+# OR single model fallback
+OPENROUTER_MODEL=qwen/qwen3-30b-a3b-instruct
+```
+
+### Remaining Work
+
+1. **Image parsing**: Still uses legacy single-model pipeline. Update to three-stage (OCR → Segmentation → Alignment) when ready.
+2. **Testing**: Run eval suite with new pipeline to measure actual improvement.

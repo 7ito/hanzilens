@@ -133,6 +133,15 @@ export function useParse(): UseParseResult {
             try {
               const parsed = JSON.parse(data);
 
+              // Handle translationParts event from Stage 2 (two-stage pipeline)
+              if (parsed.type === 'translationParts') {
+                setState((prev) => ({
+                  ...prev,
+                  translationParts: Array.isArray(parsed.data) ? parsed.data : [],
+                }));
+                continue;
+              }
+
               // Handle streaming chunks
               if (parsed.choices?.[0]?.delta?.content) {
                 contentBuffer += parsed.choices[0].delta.content;

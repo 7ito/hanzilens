@@ -15,12 +15,14 @@ import type {
   EvaluationSummary,
   SentenceResult,
   SegmentEvaluation,
-  TokenUsage,
+  TwoStageUsage,
   EvalParseResponse,
   EvalSegment,
   CombinedPinyinStats,
   PinyinStats,
   PinyinCorrectionDetail,
+  AlignmentStats,
+  AlignmentValidation,
 } from './types.js';
 
 const DEFAULT_SERVER_URL = 'http://localhost:5000';
@@ -43,7 +45,7 @@ export async function checkServerHealth(serverUrl: string): Promise<boolean> {
 /**
  * Parse a sentence via the /eval/parse endpoint
  * 
- * This calls the full production pipeline including pinyin-pro correction.
+ * This calls the full two-stage production pipeline including pinyin-pro correction.
  */
 async function parseViaEndpoint(
   serverUrl: string,
@@ -54,7 +56,8 @@ async function parseViaEndpoint(
   segments: EvalSegment[];
   translation: string;
   translationParts: Array<{ text: string; segmentIds: number[] }>;
-  usage: TokenUsage;
+  usage: TwoStageUsage;
+  alignmentValidation: AlignmentValidation | null;
 }> {
   const response = await fetch(`${serverUrl}/eval/parse`, {
     method: 'POST',
@@ -74,11 +77,8 @@ async function parseViaEndpoint(
     segments: data.result.segments,
     translation: data.result.translation,
     translationParts: data.result.translationParts,
-    usage: {
-      prompt: data.usage.prompt,
-      completion: data.usage.completion,
-      total: data.usage.total,
-    },
+    usage: data.usage,
+    alignmentValidation: data.alignmentValidation,
   };
 }
 
@@ -99,7 +99,8 @@ async function evaluateSentence(
     translationParts: Array<{ text: string; segmentIds: number[] }>;
   } | undefined;
   let parseError: string | undefined;
-  let tokensUsed: TokenUsage | undefined;
+  let tokensUsed: TwoStageUsage | undefined;
+  let alignmentValidation: AlignmentValidation | undefined;
 
   try {
     const result = await parseViaEndpoint(serverUrl, modelId, sentence.text, provider);
@@ -109,6 +110,7 @@ async function evaluateSentence(
       translationParts: result.translationParts,
     };
     tokensUsed = result.usage;
+    alignmentValidation = result.alignmentValidation || undefined;
   } catch (error) {
     parseError = error instanceof Error ? error.message : 'Unknown error';
   }
@@ -159,6 +161,7 @@ async function evaluateSentence(
       translationParts: parseResult.translationParts,
     } : undefined,
     segmentEvaluations,
+    alignmentValidation,
   };
 }
 
@@ -244,6 +247,41 @@ function calculateCombinedPinyinStats(
 }
 
 /**
+ * Calculate alignment quality statistics from sentence results
+ */
+function calculateAlignmentStats(results: SentenceResult[]): AlignmentStats {
+  let total = 0;
+  let valid = 0;
+  let reconstructionFailures = 0;
+  let segmentIdFailures = 0;
+
+  for (const result of results) {
+    if (result.alignmentValidation) {
+      total++;
+      if (result.alignmentValidation.isValid) {
+        valid++;
+      } else {
+        if (!result.alignmentValidation.reconstructionMatches) {
+          reconstructionFailures++;
+        }
+        if (!result.alignmentValidation.segmentIdsValid) {
+          segmentIdFailures++;
+        }
+      }
+    }
+  }
+
+  return {
+    total,
+    valid,
+    invalid: total - valid,
+    validRate: total > 0 ? valid / total : 0,
+    reconstructionFailures,
+    segmentIdFailures,
+  };
+}
+
+/**
  * Calculate summary statistics from sentence results
  */
 function calculateSummary(
@@ -262,6 +300,9 @@ function calculateSummary(
   // Pinyin stats (now includes both raw and corrected, plus correction details)
   const pinyinStats = calculateCombinedPinyinStats(allEvaluations, sentences);
 
+  // Alignment stats (two-stage pipeline quality)
+  const alignmentStats = calculateAlignmentStats(sentences);
+
   // Semantic stats (if enabled)
   const semanticStats = semanticEnabled ? calculateSemanticStats(allEvaluations) : undefined;
 
@@ -272,12 +313,12 @@ function calculateSummary(
   const minResponseMs = responseTimes.length > 0 ? Math.min(...responseTimes) : 0;
   const maxResponseMs = responseTimes.length > 0 ? Math.max(...responseTimes) : 0;
 
-  // Cost stats
+  // Cost stats (uses total from two-stage usage)
   let cost = undefined;
   const tokensData = sentences.filter(s => s.tokensUsed).map(s => s.tokensUsed!);
   if (tokensData.length > 0) {
-    const promptTokens = tokensData.reduce((a, b) => a + b.prompt, 0);
-    const completionTokens = tokensData.reduce((a, b) => a + b.completion, 0);
+    const promptTokens = tokensData.reduce((a, b) => a + b.total.prompt, 0);
+    const completionTokens = tokensData.reduce((a, b) => a + b.total.completion, 0);
     cost = {
       promptTokens,
       completionTokens,
@@ -291,6 +332,7 @@ function calculateSummary(
     failedParses,
     totalSegments: allEvaluations.length,
     pinyinStats,
+    alignmentStats,
     semanticStats,
     timing: {
       avgResponseMs,
@@ -412,6 +454,19 @@ export function printSummary(result: EvaluationResult): void {
     }
   }
 
+  if (summary.alignmentStats && summary.alignmentStats.total > 0) {
+    console.log(`\nAlignment Quality (Two-Stage Pipeline):`);
+    console.log(`  Valid: ${summary.alignmentStats.valid}/${summary.alignmentStats.total}`);
+    console.log(`  Invalid: ${summary.alignmentStats.invalid}`);
+    console.log(`  Validity Rate: ${(summary.alignmentStats.validRate * 100).toFixed(1)}%`);
+    if (summary.alignmentStats.reconstructionFailures > 0) {
+      console.log(`  Reconstruction failures: ${summary.alignmentStats.reconstructionFailures}`);
+    }
+    if (summary.alignmentStats.segmentIdFailures > 0) {
+      console.log(`  Invalid segment ID refs: ${summary.alignmentStats.segmentIdFailures}`);
+    }
+  }
+
   if (summary.semanticStats) {
     console.log(`\nSemantic Evaluation:`);
     console.log(`  Correct: ${summary.semanticStats.correct}`);
@@ -440,26 +495,30 @@ export function printSummary(result: EvaluationResult): void {
  * Compare multiple evaluation results
  */
 export function compareResults(results: EvaluationResult[]): void {
-  console.log('\n' + '='.repeat(100));
+  console.log('\n' + '='.repeat(115));
   console.log('MODEL COMPARISON');
-  console.log('='.repeat(100));
+  console.log('='.repeat(115));
 
   // Header
   console.log(
     'Model'.padEnd(40) +
     'Raw Pinyin'.padStart(12) +
     'Corrected'.padStart(12) +
+    'Alignment'.padStart(12) +
     'Semantic'.padStart(10) +
     'Avg Time'.padStart(12) +
     'Tokens'.padStart(10)
   );
-  console.log('-'.repeat(100));
+  console.log('-'.repeat(115));
 
   // Rows
   for (const result of results) {
     const { summary } = result;
     const rawPinyinPct = `${(summary.pinyinStats.raw.accuracy * 100).toFixed(1)}%`;
     const correctedPinyinPct = `${(summary.pinyinStats.corrected.accuracy * 100).toFixed(1)}%`;
+    const alignmentPct = summary.alignmentStats && summary.alignmentStats.total > 0
+      ? `${(summary.alignmentStats.validRate * 100).toFixed(1)}%`
+      : 'N/A';
     const semanticPct = summary.semanticStats
       ? `${(summary.semanticStats.score * 100).toFixed(1)}%`
       : 'N/A';
@@ -470,6 +529,7 @@ export function compareResults(results: EvaluationResult[]): void {
       result.modelId.padEnd(40) +
       rawPinyinPct.padStart(12) +
       correctedPinyinPct.padStart(12) +
+      alignmentPct.padStart(12) +
       semanticPct.padStart(10) +
       avgTime.padStart(12) +
       tokens.padStart(10)

@@ -32,17 +32,15 @@ export interface EvalParseResult {
 }
 
 /**
- * Response from /eval/parse endpoint
+ * Response from /eval/parse endpoint (two-stage pipeline)
  */
 export interface EvalParseResponse {
-  model: string;
+  segmentationModel: string;
+  alignmentModel: string;
   provider: string | null;
   result: EvalParseResult;
-  usage: {
-    prompt: number;
-    completion: number;
-    total: number;
-  };
+  alignmentValidation: AlignmentValidation | null;
+  usage: TwoStageUsage;
 }
 
 /**
@@ -133,6 +131,24 @@ export interface TokenUsage {
 }
 
 /**
+ * Token usage for two-stage pipeline
+ */
+export interface TwoStageUsage {
+  segmentation: TokenUsage;
+  alignment: TokenUsage | null;
+  total: TokenUsage;
+}
+
+/**
+ * Alignment validation result from /eval/parse
+ */
+export interface AlignmentValidation {
+  isValid: boolean;
+  reconstructionMatches: boolean;
+  segmentIdsValid: boolean;
+}
+
+/**
  * Evaluation result for a single sentence
  */
 export interface SentenceResult {
@@ -140,11 +156,12 @@ export interface SentenceResult {
   input: string;
   category: SentenceCategory;
   responseTimeMs: number;
-  tokensUsed?: TokenUsage;
+  tokensUsed?: TwoStageUsage;  // Now uses two-stage usage
   success: boolean;
   parseError?: string;
   parseResult?: ParseResponse;
   segmentEvaluations: SegmentEvaluation[];
+  alignmentValidation?: AlignmentValidation;  // Alignment quality for this sentence
 }
 
 /**
@@ -210,6 +227,24 @@ export interface SemanticStats {
 }
 
 /**
+ * Alignment quality statistics
+ */
+export interface AlignmentStats {
+  /** Total sentences with alignment results */
+  total: number;
+  /** Valid alignments (reconstruction matches + valid IDs) */
+  valid: number;
+  /** Invalid alignments */
+  invalid: number;
+  /** Validity rate: valid / total */
+  validRate: number;
+  /** Count of reconstruction failures */
+  reconstructionFailures: number;
+  /** Count of invalid segment ID references */
+  segmentIdFailures: number;
+}
+
+/**
  * Response time statistics
  */
 export interface TimingStats {
@@ -239,6 +274,7 @@ export interface EvaluationSummary {
   failedParses: number;
   totalSegments: number;
   pinyinStats: CombinedPinyinStats;  // Now includes both raw and corrected stats
+  alignmentStats?: AlignmentStats;   // Alignment quality metrics (two-stage pipeline)
   semanticStats?: SemanticStats;
   timing: TimingStats;
   cost?: CostStats;
@@ -297,4 +333,118 @@ export interface SemanticJudgmentInput {
 export interface SemanticJudgmentResponse {
   rating: string;
   explanation: string;
+}
+
+// ============================================================================
+// TIMING BENCHMARK TYPES
+// ============================================================================
+
+/**
+ * Timing result for a single sentence
+ */
+export interface SentenceTimingResult {
+  sentence: string;
+  
+  /** Monolithic approach timing (single model call with full prompt) */
+  monolithic: {
+    totalMs: number;
+    tokens: TokenUsage;
+    success: boolean;
+    error?: string;
+  };
+  
+  /** Two-stage pipeline timing */
+  twoStage: {
+    segmentationMs: number;
+    alignmentMs: number;
+    totalMs: number;
+    segmentationTokens: TokenUsage;
+    alignmentTokens: TokenUsage | null;
+    success: boolean;
+    error?: string;
+  };
+}
+
+/**
+ * Percentile statistics for timing
+ */
+export interface TimingPercentiles {
+  avg: number;
+  min: number;
+  max: number;
+  p50: number;
+  p95: number;
+}
+
+/**
+ * Summary statistics for the benchmark
+ */
+export interface TimingBenchmarkSummary {
+  sentenceCount: number;
+  warmupCount: number;
+  
+  /** Monolithic approach stats */
+  monolithic: {
+    timing: TimingPercentiles;
+    successRate: number;
+    avgTokens: TokenUsage;
+  };
+  
+  /** Two-stage pipeline stats */
+  twoStage: {
+    segmentationTiming: TimingPercentiles;
+    alignmentTiming: TimingPercentiles;
+    totalTiming: TimingPercentiles;
+    successRate: number;
+    avgSegmentationTokens: TokenUsage;
+    avgAlignmentTokens: TokenUsage | null;
+  };
+  
+  /** Comparison metrics */
+  comparison: {
+    /** monolithic.avg / twoStage.avg (>1 means two-stage is faster) */
+    speedupFactor: number;
+    /** Percentage of two-stage time spent in segmentation */
+    segmentationPct: number;
+    /** Percentage of two-stage time spent in alignment */
+    alignmentPct: number;
+  };
+}
+
+/**
+ * Full benchmark result
+ */
+export interface TimingBenchmarkResult {
+  timestamp: string;
+  
+  /** Models used */
+  models: {
+    monolithic: string;
+    segmentation: string;
+    alignment: string;
+  };
+  
+  /** Individual sentence results */
+  sentences: SentenceTimingResult[];
+  
+  /** Aggregated summary */
+  summary: TimingBenchmarkSummary;
+}
+
+/**
+ * Options for running the timing benchmark
+ */
+export interface TimingBenchmarkOptions {
+  /** Model for monolithic approach */
+  monolithicModel: string;
+  /** Model for segmentation stage */
+  segmentationModel: string;
+  /** Model for alignment stage */
+  alignmentModel: string;
+  /** Sentences to benchmark */
+  sentences: string[];
+  /** Number of warmup requests (not counted in stats) */
+  warmupCount?: number;
+  /** Progress callback */
+  onProgress?: (phase: string, current: number, total: number) => void;
 }
