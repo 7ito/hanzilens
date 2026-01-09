@@ -303,6 +303,10 @@ export async function streamParseImage(imageDataUrl: string): Promise<Response> 
         ],
         stream: true,
         response_format: { type: 'json_object' },
+        // Prioritize Fireworks (highest throughput provider at ~77 tps)
+        provider: {
+          order: ['fireworks'],
+        },
       }),
       signal: controller.signal,
     });
