@@ -412,11 +412,13 @@ export interface ParseNonStreamingResult {
  * 
  * @param sentence - Chinese text to parse
  * @param modelOverride - Optional model ID to use instead of configured model
+ * @param providerOverride - Optional provider slug (e.g., 'fireworks', 'together')
  * @returns Parse result with model info and token usage
  */
 export async function parseNonStreaming(
   sentence: string,
-  modelOverride?: string
+  modelOverride?: string,
+  providerOverride?: string
 ): Promise<ParseNonStreamingResult> {
   const model = modelOverride || config.openrouter.model;
   
@@ -455,6 +457,12 @@ export async function parseNonStreaming(
         ],
         stream: false,
         response_format: { type: 'json_object' },
+        // Add provider routing if specified (use 'only' for strict provider selection)
+        ...(providerOverride && {
+          provider: {
+            only: [providerOverride],
+          },
+        }),
       }),
       signal: controller.signal,
     });

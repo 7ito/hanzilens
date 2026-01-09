@@ -43,6 +43,11 @@ const { values } = parseArgs({
       default: DEFAULT_SERVER_URL,
       description: 'Backend server URL',
     },
+    provider: {
+      type: 'string',
+      short: 'p',
+      description: 'OpenRouter provider slug (e.g., fireworks, together, deepinfra)',
+    },
     'no-semantic': {
       type: 'boolean',
       default: false,
@@ -83,6 +88,7 @@ Usage:
 Options:
   -m, --model <id>       Model to evaluate (OpenRouter slug, e.g., qwen/qwen-2.5-7b-instruct)
   --models <ids>         Comma-separated list of models to compare
+  -p, --provider <slug>  OpenRouter provider slug (e.g., fireworks, together, deepinfra)
   --server-url <url>     Backend server URL (default: ${DEFAULT_SERVER_URL})
   --no-semantic          Skip semantic judging (faster, cheaper)
   -q, --quick            Run quick test with 10 sentences (default: all ${testSentences.length})
@@ -95,6 +101,7 @@ Examples:
 
   # Then run evaluation
   npm run eval:model -- -m qwen/qwen-2.5-72b-instruct
+  npm run eval:model -- -m qwen/qwen-2.5-72b-instruct -p fireworks
   npm run eval:model -- --models qwen/qwen-2.5-7b-instruct,google/gemini-flash-1.5
   npm run eval:model -- -m qwen/qwen-2.5-7b-instruct --quick --no-semantic
 
@@ -169,6 +176,9 @@ async function main(): Promise<void> {
   const enableSemanticJudging = !values['no-semantic'];
 
   console.log(`\nModels to evaluate: ${modelIds.length}`);
+  if (values.provider) {
+    console.log(`Provider: ${values.provider}`);
+  }
   console.log(`Test sentences: ${sentences.length}`);
   console.log(`Semantic judging: ${enableSemanticJudging ? 'enabled' : 'disabled'}`);
 
@@ -183,6 +193,7 @@ async function main(): Promise<void> {
       const result = await evaluateModel({
         modelId,
         serverUrl,
+        provider: values.provider,
         sentences,
         enableSemanticJudging,
         onProgress: (completed, total, sentence) => {

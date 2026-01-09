@@ -47,7 +47,8 @@ export async function checkServerHealth(serverUrl: string): Promise<boolean> {
 async function parseViaEndpoint(
   serverUrl: string,
   modelId: string,
-  sentence: string
+  sentence: string,
+  provider?: string
 ): Promise<{ 
   segments: EvalSegment[];
   translation: string;
@@ -57,7 +58,7 @@ async function parseViaEndpoint(
   const response = await fetch(`${serverUrl}/eval/parse`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sentence, model: modelId }),
+    body: JSON.stringify({ sentence, model: modelId, provider }),
     signal: AbortSignal.timeout(90000),
   });
 
@@ -86,7 +87,8 @@ async function parseViaEndpoint(
 async function evaluateSentence(
   serverUrl: string,
   modelId: string,
-  sentence: TestSentence
+  sentence: TestSentence,
+  provider?: string
 ): Promise<SentenceResult> {
   const startTime = performance.now();
 
@@ -99,7 +101,7 @@ async function evaluateSentence(
   let tokensUsed: TokenUsage | undefined;
 
   try {
-    const result = await parseViaEndpoint(serverUrl, modelId, sentence.text);
+    const result = await parseViaEndpoint(serverUrl, modelId, sentence.text, provider);
     parseResult = {
       translation: result.translation,
       segments: result.segments,
@@ -248,12 +250,15 @@ function calculateSummary(
  * Run evaluation for a model
  */
 export async function evaluateModel(options: EvalOptions): Promise<EvaluationResult> {
-  const { modelId, serverUrl, sentences, enableSemanticJudging, onProgress } = options;
+  const { modelId, serverUrl, provider, sentences, enableSemanticJudging, onProgress } = options;
 
   // Ensure database is initialized (for pinyin validation)
   getDatabase();
 
   console.log(`\nEvaluating model: ${modelId}`);
+  if (provider) {
+    console.log(`Provider: ${provider}`);
+  }
   console.log(`Server: ${serverUrl}`);
   console.log(`Sentences: ${sentences.length}`);
   console.log(`Semantic judging: ${enableSemanticJudging ? 'enabled' : 'disabled'}`);
@@ -267,7 +272,7 @@ export async function evaluateModel(options: EvalOptions): Promise<EvaluationRes
 
     onProgress?.(i + 1, sentences.length, sentence.text);
 
-    const result = await evaluateSentence(serverUrl, modelId, sentence);
+    const result = await evaluateSentence(serverUrl, modelId, sentence, provider);
     results.push(result);
 
     // Small delay between requests
@@ -297,6 +302,7 @@ export async function evaluateModel(options: EvalOptions): Promise<EvaluationRes
       semanticJudgingEnabled: enableSemanticJudging,
       judgeModel: enableSemanticJudging ? 'qwen/qwen3-max' : undefined,
       serverUrl,
+      provider,
     },
     summary,
     sentences: results,

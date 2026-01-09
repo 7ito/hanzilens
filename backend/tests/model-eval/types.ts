@@ -36,6 +36,7 @@ export interface EvalParseResult {
  */
 export interface EvalParseResponse {
   model: string;
+  provider: string | null;
   result: EvalParseResult;
   usage: {
     prompt: number;
@@ -227,7 +228,8 @@ export interface EvaluationConfig {
   sentenceCount: number;
   semanticJudgingEnabled: boolean;
   judgeModel?: string;
-  serverUrl: string;  // Backend server URL used for evaluation
+  serverUrl: string;   // Backend server URL used for evaluation
+  provider?: string;   // OpenRouter provider used (if specified)
 }
 
 /**
@@ -247,6 +249,7 @@ export interface EvaluationResult {
 export interface EvalOptions {
   modelId: string;           // Model to evaluate (OpenRouter slug)
   serverUrl: string;         // Backend server URL
+  provider?: string;         // Optional OpenRouter provider slug (e.g., 'fireworks', 'together')
   sentences: TestSentence[];
   enableSemanticJudging: boolean;
   /** Callback for progress updates */

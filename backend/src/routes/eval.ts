@@ -27,7 +27,8 @@ const router = Router();
  */
 interface EvalParseRequest {
   sentence: string;
-  model?: string;  // Optional model override (OpenRouter slug)
+  model?: string;     // Optional model override (OpenRouter slug)
+  provider?: string;  // Optional provider slug (e.g., 'fireworks', 'together', 'deepinfra')
 }
 
 /**
@@ -98,12 +99,14 @@ function applyPinyinCorrection(
  * Request body:
  * {
  *   "sentence": "Chinese text to parse",
- *   "model": "qwen/qwen-2.5-72b-instruct" // optional
+ *   "model": "qwen/qwen-2.5-72b-instruct", // optional
+ *   "provider": "fireworks" // optional - OpenRouter provider slug
  * }
  * 
  * Response:
  * {
  *   "model": "qwen/qwen-2.5-72b-instruct",
+ *   "provider": "fireworks" | null,
  *   "result": {
  *     "translation": "...",
  *     "segments": [...],  // With rawPinyin and correctedPinyin
@@ -113,7 +116,7 @@ function applyPinyinCorrection(
  * }
  */
 router.post('/parse', async (req: Request, res: Response) => {
-  const { sentence, model: modelOverride } = req.body as EvalParseRequest;
+  const { sentence, model: modelOverride, provider: providerOverride } = req.body as EvalParseRequest;
 
   // Validation
   if (!sentence || typeof sentence !== 'string') {
@@ -135,13 +138,14 @@ router.post('/parse', async (req: Request, res: Response) => {
 
   try {
     // Get AI parse result (non-streaming)
-    const { result, model, usage } = await parseNonStreaming(trimmedSentence, modelOverride);
+    const { result, model, usage } = await parseNonStreaming(trimmedSentence, modelOverride, providerOverride);
 
     // Apply pinyin correction (same as production)
     const correctedSegments = applyPinyinCorrection(trimmedSentence, result.segments);
 
     res.json({
       model,
+      provider: providerOverride || null,
       result: {
         translation: result.translation,
         segments: correctedSegments,
