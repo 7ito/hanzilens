@@ -46,6 +46,16 @@ app.get('/', (_req, res) => {
 app.use(dictionaryRouter);
 app.use(parseRouter);
 
+// Eval routes - development only (no rate limiting, allows model override)
+if (process.env.NODE_ENV !== 'production') {
+  import('./routes/eval.js').then(evalRouter => {
+    app.use('/eval', evalRouter.default);
+    console.log('Eval routes enabled (development mode)');
+  }).catch(err => {
+    console.error('Failed to load eval routes:', err);
+  });
+}
+
 // Error handler (must be last)
 app.use(errorHandler);
 

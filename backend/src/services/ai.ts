@@ -373,3 +373,132 @@ export async function streamParseImage(imageDataUrl: string): Promise<{
   
   return { response, extractedText };
 }
+
+/**
+ * Token usage information from OpenRouter
+ */
+export interface TokenUsage {
+  prompt: number;
+  completion: number;
+  total: number;
+}
+
+/**
+ * Result from non-streaming parse
+ */
+export interface ParseNonStreamingResult {
+  result: {
+    translation: string;
+    segments: Array<{
+      id: number;
+      token: string;
+      pinyin: string;
+      definition: string;
+    }>;
+    translationParts: Array<{
+      text: string;
+      segmentIds: number[];
+    }>;
+  };
+  model: string;
+  usage: TokenUsage;
+}
+
+/**
+ * Non-streaming parse for evaluation purposes.
+ * 
+ * Allows model override and returns token usage.
+ * Used by the /eval/parse endpoint for model evaluation.
+ * 
+ * @param sentence - Chinese text to parse
+ * @param modelOverride - Optional model ID to use instead of configured model
+ * @returns Parse result with model info and token usage
+ */
+export async function parseNonStreaming(
+  sentence: string,
+  modelOverride?: string
+): Promise<ParseNonStreamingResult> {
+  const model = modelOverride || config.openrouter.model;
+  
+  if (!config.openrouter.apiKey) {
+    throw new Error('OPENROUTER_API_KEY not set');
+  }
+  
+  if (!model) {
+    throw new Error('No model specified and OPENROUTER_MODEL not set');
+  }
+
+  // Set up timeout for the request
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${config.openrouter.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.openrouter.apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hanzilens.com',
+        'X-Title': 'HanziLens Model Eval',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: SYSTEM_PROMPT,
+          },
+          {
+            role: 'user',
+            content: sentence,
+          },
+        ],
+        stream: false,
+        response_format: { type: 'json_object' },
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(`OpenRouter API error (${response.status}):`, errorBody);
+      throw new Error(`Model request failed: ${response.status}`);
+    }
+
+    const data = await response.json() as {
+      choices: Array<{ message: { content: string } }>;
+      usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    };
+
+    const content = data.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('Empty response from model');
+    }
+
+    // Parse the JSON response
+    const result = JSON.parse(content);
+
+    // Validate basic structure
+    if (!result.segments || !Array.isArray(result.segments)) {
+      throw new Error('Invalid response: missing segments array');
+    }
+
+    return {
+      result,
+      model,
+      usage: {
+        prompt: data.usage?.prompt_tokens ?? 0,
+        completion: data.usage?.completion_tokens ?? 0,
+        total: data.usage?.total_tokens ?? 0,
+      },
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Model request timed out');
+    }
+    throw error;
+  }
+}

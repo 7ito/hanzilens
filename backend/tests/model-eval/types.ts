@@ -8,6 +8,43 @@ import type { ParseResponse, ParsedSegment, DictionaryEntry } from '../../src/ty
 export type { ParseResponse, ParsedSegment, DictionaryEntry };
 
 /**
+ * Segment with both raw AI pinyin and corrected pinyin
+ */
+export interface EvalSegment {
+  id: number;
+  token: string;
+  rawPinyin: string;       // Original pinyin from AI model
+  correctedPinyin: string; // Pinyin after pinyin-pro correction
+  pinyin: string;          // Final pinyin (same as correctedPinyin)
+  definition: string;
+}
+
+/**
+ * Parse result from /eval/parse endpoint
+ */
+export interface EvalParseResult {
+  translation: string;
+  segments: EvalSegment[];
+  translationParts: Array<{
+    text: string;
+    segmentIds: number[];
+  }>;
+}
+
+/**
+ * Response from /eval/parse endpoint
+ */
+export interface EvalParseResponse {
+  model: string;
+  result: EvalParseResult;
+  usage: {
+    prompt: number;
+    completion: number;
+    total: number;
+  };
+}
+
+/**
  * Test sentence categories for targeting specific language features
  */
 export type SentenceCategory =
@@ -76,9 +113,12 @@ export interface SemanticJudgment {
 export interface SegmentEvaluation {
   segmentId: number;
   token: string;
-  aiPinyin: string;
+  rawPinyin: string;        // Original pinyin from AI model
+  correctedPinyin: string;  // Pinyin after pinyin-pro correction
+  aiPinyin: string;         // Alias for correctedPinyin (for backward compatibility)
   aiDefinition: string;
   pinyinValidation: PinyinValidationResult;
+  rawPinyinValidation?: PinyinValidationResult;  // Validation of raw AI pinyin (before correction)
   semanticJudgment?: SemanticJudgment;
 }
 
@@ -123,6 +163,18 @@ export interface PinyinStats {
 }
 
 /**
+ * Combined pinyin statistics showing both raw AI and corrected accuracy
+ */
+export interface CombinedPinyinStats {
+  /** Stats for pinyin after pinyin-pro correction (what users see) */
+  corrected: PinyinStats;
+  /** Stats for raw AI pinyin before correction (model quality) */
+  raw: PinyinStats;
+  /** Number of segments where correction changed the pinyin */
+  correctionsMade: number;
+}
+
+/**
  * Semantic evaluation statistics
  */
 export interface SemanticStats {
@@ -162,7 +214,7 @@ export interface EvaluationSummary {
   successfulParses: number;
   failedParses: number;
   totalSegments: number;
-  pinyinStats: PinyinStats;
+  pinyinStats: CombinedPinyinStats;  // Now includes both raw and corrected stats
   semanticStats?: SemanticStats;
   timing: TimingStats;
   cost?: CostStats;
@@ -175,6 +227,7 @@ export interface EvaluationConfig {
   sentenceCount: number;
   semanticJudgingEnabled: boolean;
   judgeModel?: string;
+  serverUrl: string;  // Backend server URL used for evaluation
 }
 
 /**
@@ -192,7 +245,8 @@ export interface EvaluationResult {
  * Options for running an evaluation
  */
 export interface EvalOptions {
-  modelId: string;
+  modelId: string;           // Model to evaluate (OpenRouter slug)
+  serverUrl: string;         // Backend server URL
   sentences: TestSentence[];
   enableSemanticJudging: boolean;
   /** Callback for progress updates */

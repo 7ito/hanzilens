@@ -2,6 +2,9 @@
 /**
  * CLI runner for model evaluation
  * 
+ * Tests the full HanziLens parsing pipeline including pinyin-pro correction.
+ * Requires the backend server to be running.
+ * 
  * Usage:
  *   npm run eval:model -- -m <model-id>
  *   npm run eval:model -- --models <model1>,<model2>
@@ -16,11 +19,12 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 import { testSentences, getQuickTestSentences } from './test-sentences.js';
-import { evaluateModel, printSummary, compareResults } from './evaluator.js';
+import { evaluateModel, printSummary, compareResults, checkServerHealth } from './evaluator.js';
 import type { EvaluationResult } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const RESULTS_DIR = resolve(__dirname, 'results');
+const DEFAULT_SERVER_URL = 'http://localhost:5000';
 
 // Parse CLI arguments
 const { values } = parseArgs({
@@ -28,11 +32,16 @@ const { values } = parseArgs({
     model: {
       type: 'string',
       short: 'm',
-      description: 'Single model ID to evaluate',
+      description: 'Model ID to evaluate (OpenRouter slug)',
     },
     models: {
       type: 'string',
-      description: 'Comma-separated list of model IDs',
+      description: 'Comma-separated list of model IDs to compare',
+    },
+    'server-url': {
+      type: 'string',
+      default: DEFAULT_SERVER_URL,
+      description: 'Backend server URL',
     },
     'no-semantic': {
       type: 'boolean',
@@ -65,21 +74,34 @@ function showHelp(): void {
   console.log(`
 Model Evaluation Runner
 
+Tests the full HanziLens parsing pipeline including pinyin-pro correction.
+Requires the backend server to be running.
+
 Usage:
   npm run eval:model -- [options]
 
 Options:
-  -m, --model <id>       Single model ID to evaluate (e.g., qwen/qwen-2.5-7b-instruct)
-  --models <ids>         Comma-separated list of model IDs
+  -m, --model <id>       Model to evaluate (OpenRouter slug, e.g., qwen/qwen-2.5-7b-instruct)
+  --models <ids>         Comma-separated list of models to compare
+  --server-url <url>     Backend server URL (default: ${DEFAULT_SERVER_URL})
   --no-semantic          Skip semantic judging (faster, cheaper)
   -q, --quick            Run quick test with 10 sentences (default: all ${testSentences.length})
   -o, --output <path>    Custom output file path
   -h, --help             Show this help
 
 Examples:
-  npm run eval:model -- -m qwen/qwen-2.5-7b-instruct
+  # Start the backend first (in another terminal)
+  cd backend && npm run dev
+
+  # Then run evaluation
+  npm run eval:model -- -m qwen/qwen-2.5-72b-instruct
   npm run eval:model -- --models qwen/qwen-2.5-7b-instruct,google/gemini-flash-1.5
-  npm run eval:model -- -m qwen/qwen-2.5-7b-instruct --no-semantic --quick
+  npm run eval:model -- -m qwen/qwen-2.5-7b-instruct --quick --no-semantic
+
+Output:
+  - Results are saved to tests/model-eval/results/
+  - Shows both raw AI pinyin accuracy and corrected (post pinyin-pro) accuracy
+  - Helps compare model quality vs system quality
 `);
 }
 
@@ -107,50 +129,60 @@ async function main(): Promise<void> {
     showHelp();
     process.exit(0);
   }
-  
+
+  // Get server URL
+  const serverUrl = values['server-url'] || DEFAULT_SERVER_URL;
+
   // Get model list
   let modelIds: string[] = [];
-  
+
   if (values.models) {
     modelIds = values.models.split(',').map(m => m.trim()).filter(Boolean);
   } else if (values.model) {
     modelIds = [values.model];
   }
-  
+
   if (modelIds.length === 0) {
     console.error('Error: No model specified. Use -m <model-id> or --models <model1>,<model2>');
     console.error('Run with --help for usage information.');
     process.exit(1);
   }
-  
-  // Check for API key
-  if (!process.env.OPENROUTER_API_KEY) {
-    console.error('Error: OPENROUTER_API_KEY environment variable not set');
-    console.error('Please set it in your .env file or export it.');
-    process.exit(1);
-  }
-  
-  // Get test sentences
-  const sentences = values.quick ? getQuickTestSentences(10) : testSentences;
-  const enableSemanticJudging = !values['no-semantic'];
-  
+
+  // Check server health
   console.log('='.repeat(60));
   console.log('Model Evaluation Runner');
   console.log('='.repeat(60));
-  console.log(`Models to evaluate: ${modelIds.length}`);
+  console.log(`\nChecking server at ${serverUrl}...`);
+  
+  const isHealthy = await checkServerHealth(serverUrl);
+  if (!isHealthy) {
+    console.error(`\nError: Server not reachable at ${serverUrl}`);
+    console.error('\nMake sure the backend is running:');
+    console.error('  cd backend && npm run dev');
+    console.error('\nThen run the evaluation again.');
+    process.exit(1);
+  }
+  console.log('Server is healthy!');
+
+  // Get test sentences
+  const sentences = values.quick ? getQuickTestSentences(10) : testSentences;
+  const enableSemanticJudging = !values['no-semantic'];
+
+  console.log(`\nModels to evaluate: ${modelIds.length}`);
   console.log(`Test sentences: ${sentences.length}`);
   console.log(`Semantic judging: ${enableSemanticJudging ? 'enabled' : 'disabled'}`);
-  
+
   // Ensure results directory exists
   await ensureResultsDir();
-  
+
   // Run evaluations
   const results: EvaluationResult[] = [];
-  
+
   for (const modelId of modelIds) {
     try {
       const result = await evaluateModel({
         modelId,
+        serverUrl,
         sentences,
         enableSemanticJudging,
         onProgress: (completed, total, sentence) => {
@@ -158,29 +190,29 @@ async function main(): Promise<void> {
           process.stdout.write(formatProgress(completed, total, sentence));
         },
       });
-      
+
       // Clear progress line
       process.stdout.write('\r' + ' '.repeat(80) + '\r');
-      
+
       // Print summary
       printSummary(result);
-      
+
       // Save result
       const outputPath = values.output || generateOutputPath(modelId);
       await writeFile(outputPath, JSON.stringify(result, null, 2));
       console.log(`Results saved to: ${outputPath}`);
-      
+
       results.push(result);
     } catch (error) {
       console.error(`\nError evaluating ${modelId}:`, error);
     }
   }
-  
+
   // Print comparison if multiple models
   if (results.length > 1) {
     compareResults(results);
   }
-  
+
   console.log('\nEvaluation complete!');
 }
 
