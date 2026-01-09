@@ -151,30 +151,31 @@ export function InputView({ onSubmit, isLoading, onHelpClick }: InputViewProps) 
 						</p>
 					</div>
 
-					{/* Text Input with animated placeholder */}
-					<div className="relative">
-						<Textarea
-							ref={textareaRef}
-							value={text}
-							onChange={handleTextChange}
-							onKeyDown={handleKeyDown}
-							placeholder=""
-							className="min-h-[150px] text-lg resize-none"
-							disabled={isLoading || !!selectedImage}
-						/>
-						{/* Custom animated placeholder */}
-						{!text && !selectedImage && (
-							<div
-								className="absolute top-2 left-2.5 pointer-events-none select-none transition-opacity duration-300"
-								style={{ opacity: isPlaceholderVisible ? 1 : 0 }}
-							>
-								<span className="text-lg text-muted-foreground">{currentPlaceholder}</span>
-							</div>
-						)}
-					</div>
+				{/* Text Input with animated placeholder (hidden when image selected) */}
+				{!selectedImage && (
+					<>
+						<div className="relative">
+							<Textarea
+								ref={textareaRef}
+								value={text}
+								onChange={handleTextChange}
+								onKeyDown={handleKeyDown}
+								placeholder=""
+								className="min-h-[150px] text-lg resize-none"
+								disabled={isLoading}
+							/>
+							{/* Custom animated placeholder */}
+							{!text && (
+								<div
+									className="absolute top-2 left-2.5 pointer-events-none select-none transition-opacity duration-300"
+									style={{ opacity: isPlaceholderVisible ? 1 : 0 }}
+								>
+									<span className="text-lg text-muted-foreground">{currentPlaceholder}</span>
+								</div>
+							)}
+						</div>
 
-					{/* Validation Messages (only show for text input) */}
-					{!selectedImage && (
+						{/* Validation Messages */}
 						<div className="flex flex-col gap-1">
 							{/* Character count */}
 							<div
@@ -198,7 +199,8 @@ export function InputView({ onSubmit, isLoading, onHelpClick }: InputViewProps) 
 								</div>
 							)}
 						</div>
-					)}
+					</>
+				)}
 
 					{/* Image Input */}
 					<ImageInput
