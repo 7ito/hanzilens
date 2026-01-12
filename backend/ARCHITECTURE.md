@@ -68,9 +68,11 @@ CREATE INDEX idx_traditional ON entries(traditional);
 
 ## AI Service
 
-Uses OpenRouter API for model flexibility. Configure via environment:
-- `OPENROUTER_API_KEY` - API key
-- `OPENROUTER_MODEL` - Model ID (e.g., `anthropic/claude-3.5-sonnet`)
+Uses Xiaomi MiMo for streaming text parsing. Configure via environment:
+- `MIMO_API_KEY` - API key
+- `MIMO_MODEL` - Model ID (e.g., `mimo-v2-flash`)
+
+OpenRouter remains optional and is used for OCR (image parsing) and development-only evaluation routes.
 
 ## Improvements from Legacy
 
@@ -83,4 +85,4 @@ Uses OpenRouter API for model flexibility. Configure via environment:
 | Structure | Monolithic app.js | Modular routes/services |
 | Config | Hardcoded | Environment variables |
 | Validation | Partial | Full with length limits |
-| AI Provider | Alibaba DashScope (hardcoded) | OpenRouter (configurable) |
+| AI Provider | Alibaba DashScope (hardcoded) | Xiaomi MiMo (parsing) + OpenRouter (OCR/eval) |

@@ -323,7 +323,7 @@ async function streamResponseWithCorrection(
  * 
  * Parse Chinese text into word segments with pinyin and definitions.
  * Accepts either text input or image input (for OCR).
- * Uses AI (OpenRouter) for intelligent segmentation.
+ * Uses AI (Xiaomi MiMo) for intelligent segmentation.
  * 
  * For text input: Applies real-time pinyin correction using pinyin-pro
  * For image input: No pinyin correction (OCR text varies)

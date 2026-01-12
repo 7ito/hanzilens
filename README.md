@@ -4,7 +4,7 @@ A Chinese language learning tool that breaks down sentences into word segments w
 
 ## Features
 
-- **AI-powered sentence parsing** - Intelligent word segmentation using OpenRouter-compatible models
+- **AI-powered sentence parsing** - Intelligent word segmentation using Xiaomi MiMo (MiMo-V2-Flash)
 - **Dictionary lookup** - Click any word to see full dictionary entries
 - **Tone-colored pinyin** - Visual indication of tones for easier learning
 - **Dark mode** - System preference detection with manual toggle
@@ -15,7 +15,7 @@ A Chinese language learning tool that breaks down sentences into word segments w
 ### Prerequisites
 
 - Node.js 18+
-- OpenRouter API key (get one at https://openrouter.ai/keys)
+- Xiaomi MiMo API key (from https://platform.xiaomimimo.com)
 
 ### Backend Setup
 
@@ -27,7 +27,7 @@ npm install
 
 # Copy environment file and configure
 cp .env.example .env
-# Edit .env with your OPENROUTER_API_KEY and OPENROUTER_MODEL
+# Edit .env with your MIMO_API_KEY (and optionally OPENROUTER_* for OCR/eval)
 
 # Start development server
 npm run dev
@@ -56,15 +56,16 @@ The frontend runs on http://localhost:5174 and connects to the backend automatic
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `PORT` | Server port (default: 5000) | No |
-| `OPENROUTER_API_KEY` | Your OpenRouter API key | Yes |
-| `OPENROUTER_MODEL` | Model ID (e.g., `qwen/qwen-2.5-72b-instruct`) | Yes |
+| `MIMO_API_KEY` | Your Xiaomi MiMo API key | Yes |
+| `MIMO_MODEL` | Model ID (e.g., `mimo-v2-flash`) | Yes |
+| `OPENROUTER_API_KEY` | OpenRouter API key (optional, for OCR + eval) | No |
+| `OPENROUTER_MODEL` | OpenRouter model (optional, for /eval routes) | No |
+| `OPENROUTER_VISION_MODEL` | OpenRouter vision model (optional, for OCR) | No |
 | `CORS_ORIGINS` | Allowed origins, comma-separated | No |
 
 ### Recommended Models
 
-- `qwen/qwen-2.5-72b-instruct` - Best for Chinese (default recommendation)
-- `anthropic/claude-3.5-sonnet` - High quality
-- `google/gemini-flash-1.5` - Fast and cheap
+- `mimo-v2-flash` - Fast, strong Chinese segmentation (default)
 
 ## API Endpoints
 

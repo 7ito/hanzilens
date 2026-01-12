@@ -154,31 +154,31 @@ interface OcrResult {
 }
 
 /**
- * Validate that OpenRouter is configured for text parsing
+ * Validate that Xiaomi MiMo is configured for text parsing
  */
 export function isConfigured(): boolean {
-  return !!(config.openrouter.apiKey && config.openrouter.model);
+  return !!(config.mimo.apiKey && config.mimo.model);
 }
 
 /**
- * Validate that OpenRouter is configured for vision/image parsing
+ * Validate that OpenRouter is configured for vision/image parsing (OCR stage)
  */
 export function isVisionConfigured(): boolean {
   return !!(config.openrouter.apiKey && config.openrouter.visionModel);
 }
 
 /**
- * Get configuration status message for text parsing
+ * Get configuration status message for text parsing (MiMo)
  */
 export function getConfigStatus(): string {
   const issues: string[] = [];
-  if (!config.openrouter.apiKey) issues.push('OPENROUTER_API_KEY not set');
-  if (!config.openrouter.model) issues.push('OPENROUTER_MODEL not set');
+  if (!config.mimo.apiKey) issues.push('MIMO_API_KEY not set');
+  if (!config.mimo.model) issues.push('MIMO_MODEL not set');
   return issues.length > 0 ? issues.join(', ') : 'configured';
 }
 
 /**
- * Get configuration status message for vision parsing
+ * Get configuration status message for vision parsing (OpenRouter OCR)
  */
 export function getVisionConfigStatus(): string {
   const issues: string[] = [];
@@ -188,12 +188,12 @@ export function getVisionConfigStatus(): string {
 }
 
 /**
- * Stream a chat completion from OpenRouter.
+ * Stream a chat completion from Xiaomi MiMo (OpenAI-compatible).
  * Returns a ReadableStream that yields SSE chunks.
  */
 export async function streamParse(sentence: string): Promise<Response> {
   if (!isConfigured()) {
-    throw new Error(`OpenRouter not configured: ${getConfigStatus()}`);
+    throw new Error(`MiMo not configured: ${getConfigStatus()}`);
   }
 
   // Set up timeout for the request
@@ -201,16 +201,14 @@ export async function streamParse(sentence: string): Promise<Response> {
   const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${config.openrouter.baseUrl}/chat/completions`, {
+    const response = await fetch(`${config.mimo.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${config.openrouter.apiKey}`,
+        'api-key': config.mimo.apiKey,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://hanzilens.com',
-        'X-Title': 'HanziLens',
       },
       body: JSON.stringify({
-        model: config.openrouter.model,
+        model: config.mimo.model,
         messages: [
           {
             role: 'system',
@@ -222,8 +220,8 @@ export async function streamParse(sentence: string): Promise<Response> {
           },
         ],
         stream: true,
-        // Request JSON response format (supported by most models)
         response_format: { type: 'json_object' },
+        thinking: { type: 'disabled' },
       }),
       signal: controller.signal,
     });
@@ -233,7 +231,7 @@ export async function streamParse(sentence: string): Promise<Response> {
     if (!response.ok) {
       const errorBody = await response.text();
       // Log full error for debugging, but don't expose to client
-      console.error(`OpenRouter API error (${response.status}):`, errorBody);
+      console.error(`MiMo API error (${response.status}):`, errorBody);
       throw new Error('AI service temporarily unavailable');
     }
 

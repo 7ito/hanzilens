@@ -2,7 +2,7 @@
 
 ## Overview
 
-Remake the HanziLens backend with TypeScript, SQLite dictionary, OpenRouter AI, and proper modular structure.
+Remake the HanziLens backend with TypeScript, SQLite dictionary, Xiaomi MiMo for parsing, and proper modular structure.
 
 ## Architecture
 
@@ -57,7 +57,7 @@ remake/backend/
     │   ├── parse.ts          # POST /parse (AI segmentation)
     │   └── dictionary.ts     # POST /definitionLookup
     ├── services/
-    │   ├── ai.ts             # OpenRouter API wrapper
+    │   ├── ai.ts             # LLM API wrapper (MiMo + OpenRouter)
     │   └── dictionary.ts     # SQLite queries + LRU cache
     ├── middleware/
     │   ├── validation.ts     # Input validation
@@ -104,7 +104,7 @@ remake/backend/
 
 ### Phase 3: AI Service & Parse Endpoint [COMPLETED]
 
-1. ~~OpenRouter API wrapper with streaming~~
+1. ~~LLM API wrapper with streaming (MiMo)~~
 2. ~~Prompt template for Chinese segmentation (model provides translation)~~
 3. ~~`POST /parse` endpoint with SSE streaming~~
 4. ~~Input validation middleware (25% Chinese, 500 char limit)~~
@@ -113,7 +113,7 @@ remake/backend/
 - [x] AI service (`src/services/ai.ts`)
 - [x] Validation middleware (`src/middleware/validation.ts`)
 - [x] Parse route (`src/routes/parse.ts`)
-- [x] Updated config with OpenRouter settings
+- [x] Updated config with MiMo settings
 - [x] Updated .env.example with documentation
 
 ### Phase 4: Rate Limiting & Error Handling

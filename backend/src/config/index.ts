@@ -22,15 +22,20 @@ export const config = {
     maxSize: 5000, // Maximum number of cached lookups
   },
 
-  // OpenRouter AI settings
+  // Xiaomi MiMo settings (primary provider for /parse)
+  mimo: {
+    apiKey: process.env.MIMO_API_KEY || '',
+    // Model to use for text parsing (recommended: mimo-v2-flash)
+    model: process.env.MIMO_MODEL || '',
+    baseUrl: 'https://api.xiaomimimo.com',
+  },
+
+  // OpenRouter settings (optional; used for OCR + development eval routes)
   openrouter: {
     apiKey: process.env.OPENROUTER_API_KEY || '',
-    // Set your preferred model in .env, e.g.:
-    // - anthropic/claude-3.5-sonnet (high quality)
-    // - google/gemini-flash-1.5 (fast, cheap)
-    // - qwen/qwen-2.5-72b-instruct (good for Chinese)
+    // Used by /eval/parse (development-only) for model comparisons
     model: process.env.OPENROUTER_MODEL || '',
-    // Vision model for image OCR (e.g., openai/gpt-4o, anthropic/claude-sonnet-4)
+    // Vision model for image OCR stage (optional)
     visionModel: process.env.OPENROUTER_VISION_MODEL || '',
     baseUrl: 'https://openrouter.ai/api/v1',
   },
@@ -61,17 +66,28 @@ export const config = {
 export function validateConfig(): void {
   const errors: string[] = [];
 
+  // Required for the main /parse endpoint (text parsing)
+  if (!config.mimo.apiKey) {
+    errors.push('MIMO_API_KEY is required');
+  }
+
+  if (!config.mimo.model) {
+    errors.push('MIMO_MODEL is required');
+  }
+
+  // Optional providers/features
+  // - Image parsing requires OpenRouter API key + vision model
+  // - /eval routes (dev-only) require OpenRouter API key + model
   if (!config.openrouter.apiKey) {
-    errors.push('OPENROUTER_API_KEY is required');
-  }
+    console.warn('Note: OPENROUTER_API_KEY not set. Image parsing and /eval routes will be unavailable.');
+  } else {
+    if (!config.openrouter.visionModel) {
+      console.warn('Note: OPENROUTER_VISION_MODEL not set. Image parsing will be unavailable.');
+    }
 
-  if (!config.openrouter.model) {
-    errors.push('OPENROUTER_MODEL is required');
-  }
-
-  // Vision model is optional - only warn if not set
-  if (!config.openrouter.visionModel) {
-    console.warn('Note: OPENROUTER_VISION_MODEL not set. Image parsing will be unavailable.');
+    if (!config.openrouter.model) {
+      console.warn('Note: OPENROUTER_MODEL not set. /eval routes will be unavailable.');
+    }
   }
 
   if (errors.length > 0) {
