@@ -18,6 +18,10 @@ interface SegmentProps {
   isHighlighted?: boolean;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  /** Callback when segment is clicked (used for mobile modal) */
+  onSegmentClick?: (segment: ParsedSegment) => void;
+  /** Whether to show the internal popup on click (false on mobile) */
+  enablePopup?: boolean;
 }
 
 const POPUP_WIDTH = 300; // matches w-[300px] in DictionaryPopup
@@ -33,6 +37,8 @@ export function Segment({
   isHighlighted = false,
   onMouseEnter,
   onMouseLeave,
+  onSegmentClick,
+  enablePopup = true,
 }: SegmentProps) {
   const [showPopup, setShowPopup] = useState(false);
   const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
@@ -53,18 +59,27 @@ export function Segment({
   const isClickable = containsChinese(token);
 
   const handleClick = () => {
-    if (isClickable && segmentRef.current) {
+    if (!isClickable) return;
+
+    // Track dictionary open event
+    posthog.capture(AnalyticsEvents.DICTIONARY_OPENED, {
+      word: token,
+    });
+
+    // If external click handler is provided (mobile), use it
+    if (onSegmentClick) {
+      onSegmentClick(segment);
+      return;
+    }
+
+    // Otherwise, use internal popup (desktop)
+    if (enablePopup && segmentRef.current) {
       if (!showPopup) {
         // Calculate position when opening popup
         const rect = segmentRef.current.getBoundingClientRect();
         const x = rect.left + rect.width / 2 - POPUP_WIDTH / 2;
         const y = rect.bottom + 8; // 8px gap below segment
         setPopupPosition({ x, y });
-        
-        // Track dictionary open event
-        posthog.capture(AnalyticsEvents.DICTIONARY_OPENED, {
-          word: token,
-        });
       }
       setShowPopup(!showPopup);
     }
@@ -152,8 +167,8 @@ export function Segment({
         </div>
       </div>
 
-      {/* Dictionary Popup - rendered via portal */}
-      {showPopup && popupPosition && (
+      {/* Dictionary Popup - rendered via portal (desktop only) */}
+      {enablePopup && showPopup && popupPosition && (
         <DictionaryPopup 
           token={token} 
           onClose={() => setShowPopup(false)}
