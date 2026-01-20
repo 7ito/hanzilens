@@ -1,65 +1,18 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Draggable from 'react-draggable';
-import { X, BookText, Loader2 } from 'lucide-react';
+import { X, BookText } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { DictionaryView } from './DictionaryView';
 import { lookupDefinition } from '@/lib/api';
-import { convertPinyin, getToneColor } from '@/lib/pinyin';
 import { getNextZIndex } from '@/lib/zIndex';
-import type { DictionaryEntry, LookupResponse } from '@/types';
+import type { LookupResponse } from '@/types';
 
 interface DictionaryPopupProps {
   token: string;
   onClose: () => void;
   initialPosition: { x: number; y: number };
-}
-
-/**
- * Entry component for a single dictionary result
- */
-function DictionaryEntryItem({ entry }: { entry: DictionaryEntry }) {
-  const converted = convertPinyin(entry.pinyin);
-
-  return (
-    <div className="py-2 border-b border-border last:border-b-0">
-      {/* Header: Characters + Pinyin */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {/* Simplified/Traditional */}
-        <span className="text-lg font-medium">
-          {entry.simplified === entry.traditional ? (
-            entry.simplified
-          ) : (
-            <>
-              {entry.simplified}
-              <span className="text-muted-foreground mx-1">/</span>
-              {entry.traditional}
-            </>
-          )}
-        </span>
-
-        {/* Pinyin with tone colors */}
-        <span className="text-base">
-          {converted.syllables.map((syllable, i) => (
-            <span key={i} style={{ color: getToneColor(syllable.tone) }}>
-              {syllable.text}{' '}
-            </span>
-          ))}
-        </span>
-      </div>
-
-      {/* Definitions */}
-      <div className="text-sm text-muted-foreground mt-1">
-        {entry.definitions.map((def, i) => (
-          <span key={i}>
-            {i > 0 && <span className="mx-1 text-accent">|</span>}
-            {def}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 export function DictionaryPopup({ token, onClose, initialPosition }: DictionaryPopupProps) {
@@ -153,41 +106,7 @@ export function DictionaryPopup({ token, onClose, initialPosition }: DictionaryP
           </CardHeader>
 
           <CardContent className="p-3 max-h-[300px] overflow-y-auto">
-            {loading && (
-              <div className="flex items-center justify-center py-4">
-                <Loader2 className="size-5 animate-spin text-muted-foreground" />
-              </div>
-            )}
-
-            {error && (
-              <div className="text-destructive text-sm py-2">{error}</div>
-            )}
-
-            {data && (
-              <>
-                {/* Show segments if recursive breakdown was used */}
-                {data.segments && data.segments.length > 1 && (
-                  <div className="flex flex-wrap gap-1 mb-2 pb-2 border-b">
-                    {data.segments.map((seg, i) => (
-                      <Badge key={i} variant="secondary">
-                        {seg}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-
-                {/* Dictionary entries */}
-                {data.entries.length > 0 ? (
-                  data.entries.map((entry) => (
-                    <DictionaryEntryItem key={entry.id} entry={entry} />
-                  ))
-                ) : (
-                  <div className="text-muted-foreground text-sm py-2">
-                    No entries found
-                  </div>
-                )}
-              </>
-            )}
+            <DictionaryView data={data} loading={loading} error={error} />
           </CardContent>
         </Card>
       </div>

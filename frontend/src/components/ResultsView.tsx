@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Segment } from './Segment';
 import { TranslationSpan } from './TranslationSpan';
 import { ThemeToggle } from './ThemeToggle';
+import { MobileDictionaryModal } from './MobileDictionaryModal';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { generateHighlightColors } from '@/lib/colors';
 import type { ParsedSegment, TranslationPart } from '@/types';
 
@@ -28,6 +30,16 @@ export function ResultsView({
   const [hoveredSegmentId, setHoveredSegmentId] = useState<number | null>(null);
   // Track which translation part is being hovered (by index)
   const [hoveredPartIndex, setHoveredPartIndex] = useState<number | null>(null);
+  // Track selected segment for mobile dictionary modal
+  const [selectedSegment, setSelectedSegment] = useState<ParsedSegment | null>(null);
+  
+  // Check if we're on mobile
+  const isMobile = useIsMobile();
+
+  // Handle segment click - opens mobile modal on mobile devices
+  const handleSegmentClick = (segment: ParsedSegment) => {
+    setSelectedSegment(segment);
+  };
 
   // Detect dark mode for color generation
   const isDark = document.documentElement.classList.contains('dark');
@@ -131,6 +143,8 @@ export function ResultsView({
               isHighlighted={highlightedSegmentIds.has(segment.id)}
               onMouseEnter={() => setHoveredSegmentId(segment.id)}
               onMouseLeave={() => setHoveredSegmentId(null)}
+              onSegmentClick={isMobile ? handleSegmentClick : undefined}
+              enablePopup={!isMobile}
             />
           ))}
         </div>
@@ -143,6 +157,12 @@ export function ResultsView({
           </div>
         )}
       </div>
+
+      {/* Mobile dictionary modal */}
+      <MobileDictionaryModal
+        segment={selectedSegment}
+        onClose={() => setSelectedSegment(null)}
+      />
     </div>
   );
 }
