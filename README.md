@@ -3,110 +3,20 @@
 A Chinese language learning tool that breaks down sentences into word segments with pinyin pronunciation and definitions.
 
 ## Features
-
-- **AI-powered sentence parsing** - Intelligent word segmentation using OpenRouter-compatible models
-- **Dictionary lookup** - Click any word to see full dictionary entries
+- **AI-powered sentence parsing** - Intelligent word segmentation currently performed by Xiaomi's MiMo V2 Flash
+- **Dictionary lookup** - Click any word to see full dictionary entries (CC-CEDICT)
 - **Tone-colored pinyin** - Visual indication of tones for easier learning
 - **Dark mode** - System preference detection with manual toggle
 - **Responsive design** - Works on desktop and mobile
 
-## Quick Start
-
-### Prerequisites
-
-- Node.js 18+
-- OpenRouter API key (get one at https://openrouter.ai/keys)
-
-### Backend Setup
-
-```bash
-cd remake/backend
-
-# Install dependencies
-npm install
-
-# Copy environment file and configure
-cp .env.example .env
-# Edit .env with your OPENROUTER_API_KEY and OPENROUTER_MODEL
-
-# Start development server
-npm run dev
-```
-
-The backend runs on http://localhost:5000 by default.
-
-### Frontend Setup
-
-```bash
-cd remake/frontend
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-```
-
-The frontend runs on http://localhost:5174 and connects to the backend automatically.
-
-## Environment Variables
-
-### Backend (.env)
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `PORT` | Server port (default: 5000) | No |
-| `OPENROUTER_API_KEY` | Your OpenRouter API key | Yes |
-| `OPENROUTER_MODEL` | Model ID (e.g., `qwen/qwen-2.5-72b-instruct`) | Yes |
-| `CORS_ORIGINS` | Allowed origins, comma-separated | No |
-
-### Recommended Models
-
-- `qwen/qwen-2.5-72b-instruct` - Best for Chinese (default recommendation)
-- `anthropic/claude-3.5-sonnet` - High quality
-- `google/gemini-flash-1.5` - Fast and cheap
-
-## API Endpoints
-
-### POST /parse
-
-Parse a Chinese sentence into word segments.
-
-**Request:**
-```json
-{ "sentence": "你有光明的未来。" }
-```
-
-**Response:** SSE stream with segments containing `token`, `pinyin`, and `definition`.
-
-### POST /definitionLookup
-
-Look up a word in the dictionary.
-
-**Request:**
-```json
-{ "token": "光明" }
-```
-
-**Response:**
-```json
-{
-  "entries": [
-    {
-      "id": 1234,
-      "simplified": "光明",
-      "traditional": "光明",
-      "pinyin": "guang1 ming2",
-      "definitions": ["bright", "radiant", "promising"]
-    }
-  ]
-}
-```
+### Models Used
+- Sentence analysis and parsing: mimo-v2-flash
+- VL (OCR) model: Qwen3 VL 30B A3B Instruct
 
 ## Project Structure
 
 ```
-remake/
+hanzilens/
 ├── backend/
 │   ├── src/
 │   │   ├── app.ts           # Express server
@@ -128,5 +38,4 @@ remake/
 ```
 
 ## License
-
 MIT
