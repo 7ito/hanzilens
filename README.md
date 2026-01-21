@@ -14,8 +14,8 @@ A Chinese language learning tool that breaks down sentences into word segments w
 - VL (OCR) model: Qwen3 VL 30B A3B Instruct
 
 ## Stack
-**Frontend**: React
-**Backend**: Express (+ SQLite)
+- **Frontend**: React
+- **Backend**: Express (+ SQLite)
 
 ## Project Structure
 ```
