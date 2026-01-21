@@ -9,12 +9,15 @@ A Chinese language learning tool that breaks down sentences into word segments w
 - **Dark mode** - System preference detection with manual toggle
 - **Responsive design** - Works on desktop and mobile
 
-### Models Used
+## Models Used
 - Sentence analysis and parsing: mimo-v2-flash
 - VL (OCR) model: Qwen3 VL 30B A3B Instruct
 
-## Project Structure
+## Stack
+**Frontend**: React
+**Backend**: Express (+ SQLite)
 
+## Project Structure
 ```
 hanzilens/
 ├── backend/
