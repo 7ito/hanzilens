@@ -3,10 +3,10 @@
 A Chinese language learning tool that breaks down sentences into word segments with pinyin pronunciation and definitions.
 
 ## Features
-- **AI-powered sentence parsing** - Intelligent word segmentation currently performed by Xiaomi's MiMo V2 Flash
+- **Sentence parsing** - Word segmentation using Xiaomi's MiMo V2 Flash
 - **Dictionary lookup** - Click any word to see full dictionary entries (CC-CEDICT)
-- **Tone-colored pinyin** - Visual indication of tones for easier learning
-- **Dark mode** - System preference detection with manual toggle
+- **Tone-colored pinyin** - Colors indicate tones
+- **Dark mode** - Follows system preference, with manual toggle
 - **Responsive design** - Works on desktop and mobile
 
 ## Models Used
