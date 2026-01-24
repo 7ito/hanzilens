@@ -224,6 +224,10 @@ export async function streamParse(sentence: string): Promise<Response> {
         stream: true,
         // Request JSON response format (supported by most models)
         response_format: { type: 'json_object' },
+        // Prioritize AtlasCloud (highest throughput provider)
+        provider: {
+          order: ['atlas-cloud/fp8'],
+        },
       }),
       signal: controller.signal,
     });

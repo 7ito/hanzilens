@@ -1,2 +1,15 @@
 *.u8
 AGENTS.md
+
+# Claude AI session files
+.claude/
+
+# Test images
+*.jpeg
+*.jpg
+*.png
+*.gif
+*.webp
+
+# Extension directory (moved to separate repo)
+remake/extension/
