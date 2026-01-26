@@ -224,9 +224,9 @@ export async function streamParse(sentence: string): Promise<Response> {
         stream: true,
         // Request JSON response format (supported by most models)
         response_format: { type: 'json_object' },
-        // Prioritize AtlasCloud (highest throughput provider)
+        // Use Google Vertex for optimal throughput with Qwen models
         provider: {
-          order: ['atlas-cloud/fp8'],
+          only: ['google-vertex'],
         },
       }),
       signal: controller.signal,
