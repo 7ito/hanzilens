@@ -124,11 +124,10 @@ Rules:
 - Include punctuation if present
 - If multiple text regions exist, separate them with spaces
 
-Return JSON format:
+Return a JSON object with exactly one field:
 {"text": "<extracted Chinese text>"}
 
-If NO Chinese text is found:
-{"text": "", "error": "no_chinese_text", "message": "No Chinese text found in image"}`;
+If no Chinese text is found, return: {"text": ""}`;
 
 // Regex to match Chinese characters (CJK Unified Ideographs)
 const CHINESE_CHAR_REGEX = /[\u4e00-\u9fff]/g;
@@ -149,8 +148,6 @@ function validateOcrText(text: string): { valid: boolean; error?: string } {
  */
 interface OcrResult {
   text: string;
-  error?: string;
-  message?: string;
 }
 
 /**
@@ -323,20 +320,22 @@ async function extractTextFromImage(imageDataUrl: string): Promise<string> {
     }
 
     // Parse the JSON content from the model
-    let ocrResult: OcrResult;
+    let extractedText: string;
     try {
-      ocrResult = JSON.parse(content);
+      const ocrResult: OcrResult = JSON.parse(content);
+      extractedText = (ocrResult.text || '').trim();
     } catch {
-      console.error('Failed to parse OCR JSON response:', content);
-      throw new Error('Could not extract sufficient Chinese text from image');
+      // Fallback: try to extract text field using regex for malformed JSON
+      const textMatch = content.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (textMatch) {
+        // Unescape the JSON string
+        extractedText = JSON.parse(`"${textMatch[1]}"`).trim();
+        console.warn('OCR JSON was malformed, extracted text via regex');
+      } else {
+        console.error('Failed to parse OCR JSON response:', content);
+        throw new Error('Could not extract sufficient Chinese text from image');
+      }
     }
-
-    // Check for error response from model
-    if (ocrResult.error) {
-      throw new Error('Could not extract sufficient Chinese text from image');
-    }
-
-    const extractedText = (ocrResult.text || '').trim();
 
     // Validate the extracted text
     const validation = validateOcrText(extractedText);
