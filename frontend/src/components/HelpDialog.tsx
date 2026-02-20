@@ -175,7 +175,7 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
 						</p>
 
 						<p className="text-sm text-muted-foreground text-center">
-							Note: HanziLens is using Xiaomi's MiMo V2 Flash model to provide analysis. In my tests, there is a 2-3% chance of the model giving an incorrect pinyin reading. If something seems off, you can click on it to check it's actual dictionary entries.
+							Note: HanziLens currently uses Qwen3 Next 80B A3B Instruct to analyze and process Chinese text, and Gemini 2.5 Flash Lite for OCR. As these are LLMs, there can be inaccuracies in the translations/pinyin reading although quite rare at this point. Clicking on any segment allows you to view the MDBG CEDICT entry to verify if something seems off.
 						</p>
 					</div>
 
