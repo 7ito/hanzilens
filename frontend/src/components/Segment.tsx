@@ -85,6 +85,13 @@ export function Segment({
     }
   };
 
+  /**
+   * Check if a character is a Chinese character
+   */
+  function isChineseChar(char: string): boolean {
+    return /[\u4e00-\u9fff]/.test(char);
+  }
+
   // For punctuation or non-Chinese text, render with same structure as clickable
   // segments to maintain vertical alignment (empty pinyin space + character + empty definition)
   // Still support highlighting for translation alignment
@@ -136,29 +143,39 @@ export function Segment({
       >
         {/* Pinyin + Character pairs */}
         <div className="flex flex-row items-end gap-0.5">
-          {characters.map((char, index) => {
-            const syllable = converted.syllables[index];
-            const color = syllable ? getToneColor(syllable.tone) : undefined;
+          {(() => {
+            let chineseCharIndex = 0;
+            return characters.map((char, index) => {
+              const charIsChinese = isChineseChar(char);
+              let syllable = null;
+              let color = undefined;
+              
+              if (charIsChinese) {
+                syllable = converted.syllables[chineseCharIndex];
+                color = syllable ? getToneColor(syllable.tone) : undefined;
+                chineseCharIndex++;
+              }
 
-            return (
-              <div key={index} className="flex flex-col items-center">
-                {/* Pinyin */}
-                <span
-                  className="text-sm md:text-base lg:text-lg font-medium"
-                  style={{ color }}
-                >
-                  {syllable?.text || '\u00A0'}
-                </span>
-                {/* Character */}
-                <span
-                  className="text-2xl md:text-3xl lg:text-4xl"
-                  style={{ color }}
-                >
-                  {char}
-                </span>
-              </div>
-            );
-          })}
+              return (
+                <div key={index} className="flex flex-col items-center">
+                  {/* Pinyin - only show for Chinese characters */}
+                  <span
+                    className="text-sm md:text-base lg:text-lg font-medium"
+                    style={{ color }}
+                  >
+                    {syllable?.text || '\u00A0'}
+                  </span>
+                  {/* Character */}
+                  <span
+                    className="text-2xl md:text-3xl lg:text-4xl"
+                    style={{ color }}
+                  >
+                    {char}
+                  </span>
+                </div>
+              );
+            });
+          })()}
         </div>
 
         {/* Definition */}
