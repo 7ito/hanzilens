@@ -10,7 +10,7 @@ import { LogoA } from './LogoA';
 import { useAnalytics, AnalyticsEvents } from '@/hooks/useAnalytics';
 import type { ParseInput } from '@/types';
 
-const CHAR_LIMIT = 150;
+const CHAR_LIMIT = 300;
 const MIN_CHINESE_RATIO = 0.25;
 
 // Example sentences for rotating placeholder

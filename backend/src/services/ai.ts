@@ -3,6 +3,9 @@ import { config } from '../config/index.js';
 // Request timeout for AI calls (90 seconds)
 const AI_TIMEOUT_MS = 90_000;
 
+// Decoding settings
+const TEMPERATURE = 0.2;
+
 const SYSTEM_PROMPT = `You are a Chinese language segmentation assistant. Your task is to break down Chinese sentences into individual words (词语) and provide linguistic information for each, along with alignment to the English translation.
 
 ## Input
@@ -48,6 +51,13 @@ Rules for translationParts:
 - Segment into natural word units (词语), not individual characters
 - Keep grammatical particles attached appropriately: 了, 的, 吗, 吧
 - Proper nouns and titles stay as one segment (e.g., 《异度觉醒》)
+
+### Long/Noisy Inputs (OCR, typos, mixed scripts)
+- Preserve original text exactly; do NOT correct typos or rewrite tokens
+- Treat line breaks and major punctuation (。！？；:) as hard boundaries
+- Keep word-level tokens (usually 1-3 characters) and avoid long merged phrases
+- Avoid single-character tokens unless the character stands alone or is a particle
+- Keep numbers, Latin words, and mixed alphanumerics as single tokens
 
 ### Special Cases
 - Punctuation: {"id": N, "token": "。", "pinyin": "", "definition": ""}
@@ -220,6 +230,7 @@ export async function streamParse(sentence: string): Promise<Response> {
         ],
         stream: true,
         response_format: { type: 'json_object' },
+        temperature: TEMPERATURE,
         provider: {
           sort: 'throughput',
         },
@@ -293,6 +304,7 @@ async function extractTextFromImage(imageDataUrl: string): Promise<string> {
         ],
         stream: false,
         response_format: { type: 'json_object' },
+        temperature: TEMPERATURE,
         provider: {
           sort: 'throughput',
         },
@@ -457,6 +469,7 @@ export async function parseNonStreaming(
         ],
         stream: false,
         response_format: { type: 'json_object' },
+        temperature: TEMPERATURE,
         provider: providerOverride
           ? { only: [providerOverride] }
           : { sort: 'throughput' },
