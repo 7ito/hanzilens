@@ -219,11 +219,9 @@ export async function streamParse(sentence: string): Promise<Response> {
           },
         ],
         stream: true,
-        // Request JSON response format (supported by most models)
         response_format: { type: 'json_object' },
-        // Use Google Vertex for optimal throughput with Qwen models
         provider: {
-          only: ['google-vertex'],
+          sort: 'throughput',
         },
       }),
       signal: controller.signal,
@@ -293,11 +291,10 @@ async function extractTextFromImage(imageDataUrl: string): Promise<string> {
             ],
           },
         ],
-        stream: false, // Non-streaming for OCR stage
+        stream: false,
         response_format: { type: 'json_object' },
-        // Prioritize Fireworks (highest throughput provider at ~77 tps)
         provider: {
-          order: ['fireworks'],
+          sort: 'throughput',
         },
       }),
       signal: controller.signal,
@@ -460,12 +457,9 @@ export async function parseNonStreaming(
         ],
         stream: false,
         response_format: { type: 'json_object' },
-        // Add provider routing if specified (use 'only' for strict provider selection)
-        ...(providerOverride && {
-          provider: {
-            only: [providerOverride],
-          },
-        }),
+        provider: providerOverride
+          ? { only: [providerOverride] }
+          : { sort: 'throughput' },
       }),
       signal: controller.signal,
     });
