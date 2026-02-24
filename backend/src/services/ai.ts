@@ -260,22 +260,26 @@ function buildFallbackBoxes(count: number): OcrLineBox[] {
 function normalizeOcrLines(rawLines: OcrRawLine[], imageSize?: { width?: number; height?: number }): OcrLine[] {
   const fallbackBoxes = buildFallbackBoxes(rawLines.length || 1);
 
-  return rawLines
-    .map((rawLine, index) => {
-      const text = (rawLine.text || '').trim();
-      if (!text) return null;
+  const lines: OcrLine[] = [];
 
-      const id = rawLine.id ? String(rawLine.id) : `line-${index + 1}`;
-      const box = normalizeBox(rawLine.box ?? fallbackBoxes[index], imageSize);
+  rawLines.forEach((rawLine, index) => {
+    const text = (rawLine.text || '').trim();
+    if (!text) return;
 
-      return {
-        id,
-        text,
-        box,
-        confidence: rawLine.confidence,
-      };
-    })
-    .filter((line): line is OcrLine => !!line);
+    const id = rawLine.id ? String(rawLine.id) : `line-${index + 1}`;
+    const box = normalizeBox(rawLine.box ?? fallbackBoxes[index], imageSize);
+
+    const line: OcrLine = {
+      id,
+      text,
+      box,
+      ...(rawLine.confidence !== undefined ? { confidence: rawLine.confidence } : {}),
+    };
+
+    lines.push(line);
+  });
+
+  return lines;
 }
 
 function parseOcrContent(content: string): OcrRawResult {
