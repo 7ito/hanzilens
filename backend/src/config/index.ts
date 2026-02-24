@@ -43,7 +43,7 @@ export const config = {
 
   // OCR settings (for image parsing)
   ocr: {
-    maxTextLength: 200,    // Truncate extracted text to this length
+    maxTextLength: 500,    // Truncate extracted text to this length
     minChineseChars: 2,    // Minimum Chinese characters required
   },
 

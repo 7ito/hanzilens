@@ -9,6 +9,32 @@ export type ParseInput =
   | { type: 'text'; sentence: string }
   | { type: 'image'; image: string }; // base64 data URL
 
+export interface OcrBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface OcrLine {
+  id: string;
+  text: string;
+  box: OcrBox;
+  confidence?: number;
+}
+
+export interface OcrResult {
+  imageSize?: { width: number; height: number };
+  lines: OcrLine[];
+}
+
+export interface SentenceChunk {
+  id: string;
+  text: string;
+  startOffset: number;
+  endOffset: number;
+}
+
 /**
  * A parsed segment from the AI
  */
@@ -58,4 +84,4 @@ export interface LookupResponse {
 /**
  * Application view state
  */
-export type ViewState = 'input' | 'results';
+export type ViewState = 'input' | 'results' | 'image-results';

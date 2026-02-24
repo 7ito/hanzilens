@@ -175,7 +175,7 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
 						</p>
 
 						<p className="text-sm text-muted-foreground text-center">
-							Note: HanziLens currently uses Qwen3 Next 80B A3B Instruct to analyze and process Chinese text, and Gemini 2.5 Flash Lite for OCR. As these are LLMs, there can be inaccuracies in the translations/pinyin reading although quite rare at this point. Clicking on any segment allows you to view the MDBG CEDICT entry to verify if something seems off.
+							Note: HanziLens currently uses Qwen3 Next 80B A3B Instruct to analyze and process Chinese text, and Gemini 3 Flash for OCR. Image bounding boxes can vary in quality right now. As these are LLMs, there can be inaccuracies in the translations/pinyin reading although quite rare at this point. Clicking on any segment allows you to view the MDBG CEDICT entry to verify if something seems off.
 						</p>
 					</div>
 

@@ -2,12 +2,13 @@ import { Router, Request, Response as ExpressResponse } from 'express';
 import { 
   streamParse, 
   streamParseImage, 
+  ocrImage,
   isConfigured, 
   isVisionConfigured, 
   getConfigStatus, 
   getVisionConfigStatus 
 } from '../services/ai.js';
-import { validateParseInput, ValidatedRequest } from '../middleware/validation.js';
+import { validateParseInput, validateImageInput, ValidatedRequest } from '../middleware/validation.js';
 import { parseRateLimit } from '../middleware/rateLimit.js';
 import { 
   buildPinyinMap, 
@@ -17,6 +18,44 @@ import {
 } from '../services/pinyinCorrection.js';
 
 const router = Router();
+
+/**
+ * POST /ocr
+ *
+ * Extract text lines + layout from an image.
+ * Request body: { image: string (base64 data URL) }
+ * Response: { lines: [{ id, text, box, confidence? }], imageSize? }
+ */
+router.post('/ocr', parseRateLimit, validateImageInput, async (req: ValidatedRequest, res: ExpressResponse) => {
+  try {
+    if (!isVisionConfigured()) {
+      res.status(503).json({
+        error: 'Service Unavailable',
+        message: `Vision AI service not configured: ${getVisionConfigStatus()}`,
+      });
+      return;
+    }
+
+    const ocrResult = await ocrImage(req.validatedImage!);
+    res.json(ocrResult);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'An error occurred while extracting text';
+
+    if (message.includes('Could not extract sufficient Chinese text')) {
+      res.status(422).json({
+        error: 'no_chinese_text',
+        message,
+      });
+      return;
+    }
+
+    console.error('Error in /ocr:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message,
+    });
+  }
+});
 
 /**
  * State machine for real-time pinyin correction in streaming JSON

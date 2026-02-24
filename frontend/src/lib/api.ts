@@ -2,7 +2,7 @@
  * API client for HanziLens backend
  */
 
-import type { LookupResponse, ParseInput } from '@/types';
+import type { LookupResponse, OcrResult, ParseInput } from '@/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -50,6 +50,27 @@ export async function startParse(input: ParseInput): Promise<Response> {
   }
 
   return response;
+}
+
+/**
+ * Extract text lines + layout from an image.
+ * Returns normalized bounding boxes for overlay rendering.
+ */
+export async function startOcr(image: string): Promise<OcrResult> {
+  const response = await fetch(`${API_BASE_URL}/ocr`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ image }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+    throw new Error(error.message || `HTTP ${response.status}`);
+  }
+
+  return response.json();
 }
 
 /**

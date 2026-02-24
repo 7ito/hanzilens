@@ -126,18 +126,24 @@ Output:
 }`;
 
 // Simple OCR-only prompt for vision model (Stage 1 of two-stage pipeline)
-const VISION_OCR_PROMPT = `Extract all Chinese text visible in this image.
+const VISION_OCR_PROMPT = `Extract all text visible in this image and return line-level bounding boxes.
 
 Rules:
-- Include ALL Chinese text you can see
+- Include ALL text you can see (Chinese, Latin letters, numbers, punctuation)
 - Preserve natural reading order (top-to-bottom, left-to-right)
-- Include punctuation if present
-- If multiple text regions exist, separate them with spaces
+- Keep lines separate (do not merge adjacent lines)
+- Do NOT insert or remove characters; do not correct typos
+- Return bounding boxes normalized to the full image (0-1 values)
 
-Return a JSON object with exactly one field:
-{"text": "<extracted Chinese text>"}
+Return a JSON object in this exact shape:
+{
+  "imageSize": { "width": <px>, "height": <px> },
+  "lines": [
+    { "id": "l1", "text": "...", "box": { "x": 0.12, "y": 0.24, "w": 0.44, "h": 0.05 } }
+  ]
+}
 
-If no Chinese text is found, return: {"text": ""}`;
+If no text is found, return: {"lines": []}`;
 
 // Regex to match Chinese characters (CJK Unified Ideographs)
 const CHINESE_CHAR_REGEX = /[\u4e00-\u9fff]/g;
@@ -153,11 +159,136 @@ function validateOcrText(text: string): { valid: boolean; error?: string } {
   return { valid: true };
 }
 
+function validateOcrLines(lines: OcrLine[]): { valid: boolean; error?: string } {
+  const combinedText = lines.map((line) => line.text).join('');
+  return validateOcrText(combinedText);
+}
+
 /**
  * OCR result from vision model
  */
-interface OcrResult {
+interface OcrLineBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface OcrLine {
+  id: string;
   text: string;
+  box: OcrLineBox;
+  confidence?: number;
+}
+
+interface OcrResult {
+  imageSize?: { width: number; height: number };
+  lines: OcrLine[];
+}
+
+interface OcrRawLine {
+  id?: string | number;
+  text?: string;
+  box?: Partial<OcrLineBox>;
+  confidence?: number;
+}
+
+interface OcrRawResult {
+  imageSize?: { width?: number; height?: number };
+  lines?: OcrRawLine[];
+  text?: string;
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function normalizeBox(
+  box: Partial<OcrLineBox> | undefined,
+  imageSize?: { width?: number; height?: number }
+): OcrLineBox {
+  let x = box?.x ?? 0;
+  let y = box?.y ?? 0;
+  let w = box?.w ?? 0;
+  let h = box?.h ?? 0;
+
+  const maxValue = Math.max(x, y, w, h);
+
+  if (maxValue > 1.2) {
+    if (imageSize?.width && imageSize?.height) {
+      x /= imageSize.width;
+      w /= imageSize.width;
+      y /= imageSize.height;
+      h /= imageSize.height;
+    } else if (maxValue <= 100) {
+      x /= 100;
+      y /= 100;
+      w /= 100;
+      h /= 100;
+    }
+  }
+
+  x = clamp01(x);
+  y = clamp01(y);
+  w = clamp01(w);
+  h = clamp01(h);
+
+  if (w <= 0) w = 0.05;
+  if (h <= 0) h = 0.04;
+
+  if (x + w > 1) w = Math.max(0.01, 1 - x);
+  if (y + h > 1) h = Math.max(0.01, 1 - y);
+
+  return { x, y, w, h };
+}
+
+function buildFallbackBoxes(count: number): OcrLineBox[] {
+  const total = Math.max(1, count);
+  const gutter = 0.03;
+  const usableHeight = 1 - gutter * 2;
+  const lineHeight = usableHeight / total;
+
+  return Array.from({ length: total }, (_, index) => ({
+    x: 0.05,
+    y: gutter + index * lineHeight,
+    w: 0.9,
+    h: Math.min(0.12, lineHeight * 0.8),
+  }));
+}
+
+function normalizeOcrLines(rawLines: OcrRawLine[], imageSize?: { width?: number; height?: number }): OcrLine[] {
+  const fallbackBoxes = buildFallbackBoxes(rawLines.length || 1);
+
+  return rawLines
+    .map((rawLine, index) => {
+      const text = (rawLine.text || '').trim();
+      if (!text) return null;
+
+      const id = rawLine.id ? String(rawLine.id) : `line-${index + 1}`;
+      const box = normalizeBox(rawLine.box ?? fallbackBoxes[index], imageSize);
+
+      return {
+        id,
+        text,
+        box,
+        confidence: rawLine.confidence,
+      };
+    })
+    .filter((line): line is OcrLine => !!line);
+}
+
+function parseOcrContent(content: string): OcrRawResult {
+  try {
+    return JSON.parse(content) as OcrRawResult;
+  } catch {
+    const textMatch = content.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (textMatch) {
+      const extractedText = JSON.parse(`"${textMatch[1]}"`);
+      return { text: extractedText };
+    }
+    throw new Error('Could not parse OCR response');
+  }
 }
 
 /**
@@ -258,14 +389,14 @@ export async function streamParse(sentence: string): Promise<Response> {
 }
 
 /**
- * Extract Chinese text from an image using vision model (OCR only).
+ * Extract text lines + layout from an image using vision model (OCR only).
  * Non-streaming request for speed.
  * 
  * @param imageDataUrl - Base64 data URL (e.g., "data:image/jpeg;base64,...")
- * @returns Extracted Chinese text (validated and truncated)
+ * @returns OCR result with lines and normalized boxes
  * @throws Error if OCR fails or validation fails
  */
-async function extractTextFromImage(imageDataUrl: string): Promise<string> {
+async function extractLinesFromImage(imageDataUrl: string): Promise<OcrResult> {
   if (!isVisionConfigured()) {
     throw new Error(`OpenRouter vision not configured: ${getVisionConfigStatus()}`);
   }
@@ -329,33 +460,36 @@ async function extractTextFromImage(imageDataUrl: string): Promise<string> {
     }
 
     // Parse the JSON content from the model
-    let extractedText: string;
+    let rawResult: OcrRawResult;
     try {
-      const ocrResult: OcrResult = JSON.parse(content);
-      extractedText = (ocrResult.text || '').trim();
+      rawResult = parseOcrContent(content);
     } catch {
-      // Fallback: try to extract text field using regex for malformed JSON
-      const textMatch = content.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-      if (textMatch) {
-        // Unescape the JSON string
-        extractedText = JSON.parse(`"${textMatch[1]}"`).trim();
-        console.warn('OCR JSON was malformed, extracted text via regex');
-      } else {
-        console.error('Failed to parse OCR JSON response:', content);
-        throw new Error('Could not extract sufficient Chinese text from image');
-      }
+      console.error('Failed to parse OCR JSON response:', content);
+      throw new Error('Could not extract sufficient Chinese text from image');
     }
 
-    // Validate the extracted text
-    const validation = validateOcrText(extractedText);
+    const rawLines = Array.isArray(rawResult.lines) && rawResult.lines.length > 0
+      ? rawResult.lines
+      : typeof rawResult.text === 'string'
+        ? rawResult.text.split(/\n+/).map((text) => ({ text }))
+        : [];
+
+    const imageSize = rawResult.imageSize?.width && rawResult.imageSize?.height
+      ? { width: rawResult.imageSize.width, height: rawResult.imageSize.height }
+      : undefined;
+
+    const lines = normalizeOcrLines(rawLines, imageSize);
+
+    if (lines.length === 0) {
+      throw new Error('Could not extract sufficient Chinese text from image');
+    }
+
+    const validation = validateOcrLines(lines);
     if (!validation.valid) {
       throw new Error(validation.error || 'Could not extract sufficient Chinese text from image');
     }
 
-    // Truncate to max length if needed
-    const truncatedText = extractedText.slice(0, config.ocr.maxTextLength);
-
-    return truncatedText;
+    return { imageSize, lines };
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
@@ -367,7 +501,7 @@ async function extractTextFromImage(imageDataUrl: string): Promise<string> {
 
 /**
  * Two-stage image parsing:
- * 1. OCR: Extract Chinese text from image (vision model, non-streaming)
+ * 1. OCR: Extract text lines + layout from image (vision model, non-streaming)
  * 2. Parse: Segment and analyze text (text model, streaming)
  * 
  * @param imageDataUrl - Base64 data URL (e.g., "data:image/jpeg;base64,...")
@@ -377,13 +511,22 @@ export async function streamParseImage(imageDataUrl: string): Promise<{
   response: Response;
   extractedText: string;
 }> {
-  // Stage 1: OCR - extract text from image
-  const extractedText = await extractTextFromImage(imageDataUrl);
+  // Stage 1: OCR - extract text lines from image
+  const ocrResult = await extractLinesFromImage(imageDataUrl);
+  const extractedText = ocrResult.lines.map((line) => line.text).join('\n');
+  const truncatedText = extractedText.slice(0, config.ocr.maxTextLength);
   
   // Stage 2: Parse - use text model for linguistic analysis
-  const response = await streamParse(extractedText);
+  const response = await streamParse(truncatedText);
   
-  return { response, extractedText };
+  return { response, extractedText: truncatedText };
+}
+
+/**
+ * OCR-only endpoint helper for image layout
+ */
+export async function ocrImage(imageDataUrl: string): Promise<OcrResult> {
+  return extractLinesFromImage(imageDataUrl);
 }
 
 /**

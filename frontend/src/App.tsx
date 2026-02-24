@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { InputView } from '@/components/InputView';
 import { ResultsView } from '@/components/ResultsView';
+import { ImageResultsView } from '@/components/ImageResultsView';
 import { HelpDialog } from '@/components/HelpDialog';
 import { useParse } from '@/hooks/useParse';
+import { useImageParse } from '@/hooks/useImageParse';
 import { useAnalytics, AnalyticsEvents } from '@/hooks/useAnalytics';
 import type { ViewState, ParseInput } from '@/types';
 
@@ -11,7 +13,9 @@ const HAS_VISITED_KEY = 'hanzilens-has-visited';
 export function App() {
   const [view, setView] = useState<ViewState>('input');
   const [showHelp, setShowHelp] = useState(false);
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const { isLoading, translation, translationParts, segments, parse, reset } = useParse();
+  const imageParse = useImageParse();
   const { trackEvent, trackPageView } = useAnalytics();
   const hasTrackedInitialView = useRef(false);
 
@@ -34,6 +38,14 @@ export function App() {
   }, [trackEvent]);
 
   const handleSubmit = async (input: ParseInput) => {
+    if (input.type === 'image') {
+      setImageDataUrl(input.image);
+      setView('image-results');
+      trackPageView('image-results');
+      await imageParse.start(input.image);
+      return;
+    }
+
     setView('results');
     trackPageView('results');
     await parse(input);
@@ -41,6 +53,8 @@ export function App() {
 
   const handleBack = () => {
     reset();
+    imageParse.reset();
+    setImageDataUrl(null);
     setView('input');
     trackPageView('input');
   };
@@ -62,7 +76,7 @@ export function App() {
           isLoading={isLoading}
           onHelpClick={handleHelpClick}
         />
-      ) : (
+      ) : view === 'results' ? (
         <ResultsView
           translation={translation}
           translationParts={translationParts}
@@ -71,6 +85,24 @@ export function App() {
           onBack={handleBack}
           onHelpClick={handleHelpClick}
         />
+      ) : (
+        imageDataUrl && (
+          <ImageResultsView
+            imageDataUrl={imageDataUrl}
+            isLoadingOcr={imageParse.isLoadingOcr}
+            ocrError={imageParse.ocrError}
+            ocrResult={imageParse.ocrResult}
+            sentences={imageParse.sentences}
+            sentenceResults={imageParse.sentenceResults}
+            sentenceLoading={imageParse.sentenceLoading}
+            sentenceError={imageParse.sentenceError}
+            openSentenceIds={imageParse.openSentenceIds}
+            onBack={handleBack}
+            onHelpClick={handleHelpClick}
+            onSelectSentence={imageParse.selectSentence}
+            onRetryOcr={() => imageParse.start(imageDataUrl)}
+          />
+        )
       )}
 
       <HelpDialog open={showHelp} onClose={handleHelpClose} />
