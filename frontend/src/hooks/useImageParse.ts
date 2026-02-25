@@ -1,190 +1,102 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { startOcr, startParse } from '@/lib/api';
-import { parseSseResponse } from '@/lib/parseSse';
+import { useCallback, useRef, useState } from 'react';
+import { startOcr } from '@/lib/api';
+import { useSentenceParseQueue } from '@/hooks/useSentenceParseQueue';
 import { splitCombinedTextIntoSentences } from '@/lib/sentenceSplit';
-import type { OcrResult, ParseResponse, SentenceChunk } from '@/types';
+import type { OcrResult } from '@/types';
 
 interface ImageParseState {
   isLoadingOcr: boolean;
   ocrError: string | null;
   ocrResult: OcrResult | null;
-  openSentenceIds: string[];
-  sentences: SentenceChunk[];
-  sentenceResults: Record<string, ParseResponse>;
-  sentenceLoading: Record<string, boolean>;
-  sentenceError: Record<string, string | null>;
 }
 
 const initialState: ImageParseState = {
   isLoadingOcr: false,
   ocrError: null,
   ocrResult: null,
-  openSentenceIds: [],
-  sentences: [],
-  sentenceResults: {},
-  sentenceLoading: {},
-  sentenceError: {},
 };
 
-const MAX_CONCURRENCY = 3;
-const MAX_CONTEXT_LENGTH = 1500;
-
-function buildSentenceContext(combinedText: string, sentence: SentenceChunk): string {
-  if (!combinedText) return '';
-  const rawContext = combinedText.slice(0, sentence.endOffset).trim();
-  if (!rawContext) return '';
-  if (rawContext.length <= MAX_CONTEXT_LENGTH) return rawContext;
-  return rawContext.slice(rawContext.length - MAX_CONTEXT_LENGTH);
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
 }
 
 export function useImageParse() {
   const [state, setState] = useState<ImageParseState>(initialState);
-  const stateRef = useRef<ImageParseState>(initialState);
-  const queueRef = useRef<string[]>([]);
-  const inFlightRef = useRef(0);
-  const sentenceMapRef = useRef<Record<string, SentenceChunk>>({});
-  const sessionIdRef = useRef(0);
-  const combinedTextRef = useRef('');
-
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+  const ocrControllerRef = useRef<AbortController | null>(null);
+  const {
+    openSentenceIds,
+    sentences,
+    sentenceResults,
+    sentenceLoading,
+    sentenceError,
+    initialize,
+    reset: resetQueue,
+    selectSentence,
+    isSessionActive,
+  } = useSentenceParseQueue();
 
   const reset = useCallback(() => {
+    if (ocrControllerRef.current) {
+      ocrControllerRef.current.abort();
+      ocrControllerRef.current = null;
+    }
+
+    resetQueue();
     setState(initialState);
-    queueRef.current = [];
-    inFlightRef.current = 0;
-    sentenceMapRef.current = {};
-    combinedTextRef.current = '';
-  }, []);
-
-  const parseSentenceInternal = useCallback(async (sentenceId: string, sentence: SentenceChunk, sessionId: number) => {
-    setState((prev) => ({
-      ...prev,
-      sentenceLoading: { ...prev.sentenceLoading, [sentenceId]: true },
-      sentenceError: { ...prev.sentenceError, [sentenceId]: null },
-    }));
-
-    try {
-      const context = buildSentenceContext(combinedTextRef.current, sentence);
-      const response = await startParse({ type: 'text', sentence: sentence.text, context });
-      const result = await parseSseResponse(response);
-
-      if (sessionIdRef.current !== sessionId) return;
-
-      setState((prev) => ({
-        ...prev,
-        sentenceResults: { ...prev.sentenceResults, [sentenceId]: result },
-      }));
-    } catch (error) {
-      if (sessionIdRef.current !== sessionId) return;
-
-      const message = error instanceof Error ? error.message : 'Failed to parse sentence';
-      setState((prev) => ({
-        ...prev,
-        sentenceError: { ...prev.sentenceError, [sentenceId]: message },
-      }));
-    } finally {
-      if (sessionIdRef.current !== sessionId) return;
-      setState((prev) => ({
-        ...prev,
-        sentenceLoading: { ...prev.sentenceLoading, [sentenceId]: false },
-      }));
-    }
-  }, []);
-
-  const runQueue = useCallback((sessionId: number) => {
-    while (inFlightRef.current < MAX_CONCURRENCY && queueRef.current.length > 0) {
-      const sentenceId = queueRef.current.shift();
-      if (!sentenceId) break;
-      const sentence = sentenceMapRef.current[sentenceId];
-      if (!sentence) continue;
-      if (sessionIdRef.current !== sessionId) return;
-
-      inFlightRef.current += 1;
-      void parseSentenceInternal(sentenceId, sentence, sessionId).finally(() => {
-        inFlightRef.current -= 1;
-        runQueue(sessionId);
-      });
-    }
-  }, [parseSentenceInternal]);
-
-  const enqueueSentence = useCallback((sentenceId: string, priority = false) => {
-    const currentState = stateRef.current;
-    if (currentState.sentenceResults[sentenceId] || currentState.sentenceLoading[sentenceId]) {
-      return;
-    }
-
-    const existingIndex = queueRef.current.indexOf(sentenceId);
-    if (existingIndex !== -1) {
-      if (priority) {
-        queueRef.current.splice(existingIndex, 1);
-        queueRef.current.unshift(sentenceId);
-      }
-      return;
-    }
-
-    if (priority) {
-      queueRef.current.unshift(sentenceId);
-    } else {
-      queueRef.current.push(sentenceId);
-    }
-  }, []);
-
-  const selectSentence = useCallback((sentenceId: string) => {
-    const isOpen = stateRef.current.openSentenceIds.includes(sentenceId);
-
-    setState((prev) => ({
-      ...prev,
-      openSentenceIds: isOpen
-        ? prev.openSentenceIds.filter((id) => id !== sentenceId)
-        : [...prev.openSentenceIds, sentenceId],
-    }));
-
-    if (!isOpen) {
-      enqueueSentence(sentenceId, true);
-      runQueue(sessionIdRef.current);
-    }
-  }, [enqueueSentence, runQueue]);
+  }, [resetQueue]);
 
   const start = useCallback(async (image: string) => {
-    reset();
-    setState((prev) => ({ ...prev, isLoadingOcr: true, ocrError: null }));
-    sessionIdRef.current += 1;
-    const sessionId = sessionIdRef.current;
+    if (ocrControllerRef.current) {
+      ocrControllerRef.current.abort();
+      ocrControllerRef.current = null;
+    }
+
+    const sessionId = resetQueue();
+    setState({ isLoadingOcr: true, ocrError: null, ocrResult: null });
+
+    const ocrController = new AbortController();
+    ocrControllerRef.current = ocrController;
 
     try {
-      const result = await startOcr(image);
+      const result = await startOcr(image, ocrController.signal);
+      if (!isSessionActive(sessionId)) return;
+
       const combinedText = result.lines.map((line) => line.text).join('\n');
-      combinedTextRef.current = combinedText;
-      const sentences = splitCombinedTextIntoSentences(combinedText);
-      const sentenceMap: Record<string, SentenceChunk> = {};
-      sentences.forEach((sentence) => {
-        sentenceMap[sentence.id] = sentence;
+      const parsedSentences = splitCombinedTextIntoSentences(combinedText);
+
+      initialize({
+        combinedText,
+        sentences: parsedSentences,
+        sessionId,
       });
-      sentenceMapRef.current = sentenceMap;
-      queueRef.current = [];
-      inFlightRef.current = 0;
 
-      setState((prev) => ({
-        ...prev,
-        ocrResult: result,
-        sentences,
-        openSentenceIds: [],
-      }));
-
-      sentences.forEach((sentence) => enqueueSentence(sentence.id));
-      runQueue(sessionId);
+      setState((prev) => ({ ...prev, ocrResult: result }));
     } catch (error) {
+      if (!isSessionActive(sessionId)) return;
+      if (isAbortError(error)) return;
+
       const message = error instanceof Error ? error.message : 'Failed to extract text from image';
       setState((prev) => ({ ...prev, ocrError: message }));
     } finally {
-      setState((prev) => ({ ...prev, isLoadingOcr: false }));
+      if (ocrControllerRef.current === ocrController) {
+        ocrControllerRef.current = null;
+      }
+
+      if (isSessionActive(sessionId)) {
+        setState((prev) => ({ ...prev, isLoadingOcr: false }));
+      }
     }
-  }, [enqueueSentence, reset, runQueue]);
+  }, [initialize, isSessionActive, resetQueue]);
 
   return {
-    ...state,
+    isLoadingOcr: state.isLoadingOcr,
+    ocrError: state.ocrError,
+    ocrResult: state.ocrResult,
+    openSentenceIds,
+    sentences,
+    sentenceResults,
+    sentenceLoading,
+    sentenceError,
     start,
     reset,
     selectSentence,

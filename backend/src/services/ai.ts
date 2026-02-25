@@ -1,4 +1,5 @@
 import { config } from '../config/index.js';
+import { orderOcrLines } from './ocrOrder.js';
 
 // Request timeout for AI calls (90 seconds)
 const AI_TIMEOUT_MS = 90_000;
@@ -293,7 +294,7 @@ function normalizeOcrLines(rawLines: OcrRawLine[], imageSize?: { width?: number;
     lines.push(line);
   });
 
-  return lines;
+  return orderOcrLines(lines).lines;
 }
 
 function parseOcrContent(content: string): OcrRawResult {

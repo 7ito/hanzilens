@@ -1,6 +1,59 @@
+import { IncompleteJsonParser } from 'incomplete-json-parser';
 import type { ParseResponse } from '@/types';
 
-export async function parseSseResponse(response: Response): Promise<ParseResponse> {
+interface ParseSseOptions {
+  signal?: AbortSignal;
+  onPartial?: (partial: unknown) => void;
+}
+
+function createAbortError(): Error {
+  const error = new Error('The operation was aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+}
+
+function extractDeltaContent(dataLine: string): string | null {
+  const trimmed = dataLine.trim();
+  if (!trimmed.startsWith('data:')) {
+    return null;
+  }
+
+  const data = trimmed.slice(5).trimStart();
+  if (!data || data === '[DONE]') {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(data);
+    const delta = parsed?.choices?.[0]?.delta?.content;
+    return typeof delta === 'string' ? delta : null;
+  } catch {
+    return null;
+  }
+}
+
+function emitPartial(contentBuffer: string, onPartial?: (partial: unknown) => void): void {
+  if (!onPartial || !contentBuffer) return;
+
+  try {
+    const partial = IncompleteJsonParser.parse(contentBuffer);
+    if (partial && typeof partial === 'object') {
+      onPartial(partial);
+    }
+  } catch {
+    // Ignore incomplete JSON parse failures during streaming
+  }
+}
+
+export async function parseSseResponse(response: Response, options: ParseSseOptions = {}): Promise<ParseResponse> {
+  const { signal, onPartial } = options;
+
   if (!response.body) {
     throw new Error('No response body');
   }
@@ -10,33 +63,48 @@ export async function parseSseResponse(response: Response): Promise<ParseRespons
   let buffer = '';
   let contentBuffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  const processLine = (line: string) => {
+    const delta = extractDeltaContent(line);
+    if (!delta) return;
 
-    buffer += decoder.decode(value, { stream: true });
+    contentBuffer += delta;
+    emitPartial(contentBuffer, onPartial);
+  };
 
+  try {
     while (true) {
-      const lineEnd = buffer.indexOf('\n');
-      if (lineEnd === -1) break;
+      throwIfAborted(signal);
 
-      const line = buffer.slice(0, lineEnd).trim();
-      buffer = buffer.slice(lineEnd + 1);
+      const { done, value } = await reader.read();
+      throwIfAborted(signal);
 
-      if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6);
-      if (data === '[DONE]') continue;
+      if (done) {
+        buffer += decoder.decode();
+        break;
+      }
 
-      try {
-        const parsed = JSON.parse(data);
-        const delta = parsed?.choices?.[0]?.delta?.content;
-        if (delta) {
-          contentBuffer += delta;
-        }
-      } catch {
-        // Ignore malformed SSE chunks
+      buffer += decoder.decode(value, { stream: true });
+
+      while (true) {
+        const lineEnd = buffer.indexOf('\n');
+        if (lineEnd === -1) break;
+
+        const line = buffer.slice(0, lineEnd).replace(/\r$/, '');
+        buffer = buffer.slice(lineEnd + 1);
+        processLine(line);
       }
     }
+  } catch (error) {
+    if (signal?.aborted) {
+      throw createAbortError();
+    }
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (buffer.trim()) {
+    processLine(buffer);
   }
 
   if (!contentBuffer) {

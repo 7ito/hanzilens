@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { SentenceCard } from '@/components/SentenceCard';
 import { MobileDictionaryModal } from '@/components/MobileDictionaryModal';
+import { useIsDarkTheme } from '@/hooks/useIsDarkTheme';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { generateHighlightColors } from '@/lib/colors';
 import type {
@@ -379,7 +380,7 @@ export function ImageResultsView({
 
   const lines = ocrResult?.lines ?? [];
   const lineRanges = useMemo(() => buildLineRanges(lines), [lines]);
-  const isDark = document.documentElement.classList.contains('dark');
+  const isDark = useIsDarkTheme();
   const sentenceColors = useMemo(
     () => generateHighlightColors(sentences.length, isDark),
     [sentences.length, isDark]
@@ -505,11 +506,20 @@ export function ImageResultsView({
                 const isActive = openSentenceSet.has(sentence.id) || sentence.id === hoveredSentenceId;
                 const borderColor = setAlpha(color, isActive ? 0.75 : 0.5);
                 const translation = sentenceResults[sentence.id]?.translation;
+                const normalizedTranslation = typeof translation === 'string' ? translation.trim() : '';
+                const sentenceErr = sentenceError[sentence.id] || null;
+                const isSentenceLoading = !!sentenceLoading[sentence.id];
+                const hasTranslation = normalizedTranslation.length > 0;
                 const orderedBoxes = sortBoxesForReading(boxes);
                 const baseFontSize = imageSize.width && imageSize.width < 520 ? 10 : 11;
-                const { chunks, fontSize, lineHeight } = translation
+                const fallbackText = sentenceErr
+                  ? 'Failed to load'
+                  : isSentenceLoading
+                    ? 'Translating...'
+                    : 'Tap to load';
+                const { chunks, fontSize, lineHeight } = hasTranslation
                   ? fitTranslationToBoxes(
-                      translation,
+                      normalizedTranslation,
                       orderedBoxes,
                       imageSize,
                       baseFontSize,
@@ -517,7 +527,7 @@ export function ImageResultsView({
                       TRANSLATION_PADDING_Y
                     )
                   : {
-                      chunks: orderedBoxes.map((_, idx) => (idx === 0 ? 'Translating...' : '')),
+                      chunks: orderedBoxes.map((_, idx) => (idx === 0 ? fallbackText : '')),
                       fontSize: baseFontSize,
                       lineHeight: Math.round(baseFontSize * 1.35),
                     };
@@ -532,17 +542,26 @@ export function ImageResultsView({
                       onClick={() => handleOverlayClick(sentence.id)}
                       onMouseEnter={() => setHoveredSentenceId(sentence.id)}
                       onMouseLeave={() => setHoveredSentenceId(null)}
-                      className="absolute rounded-md border px-2 py-0.5 text-left leading-snug bg-background/75 text-foreground backdrop-blur overflow-hidden whitespace-pre-wrap break-words"
+                      className={`absolute rounded-md border px-2 py-0.5 text-left leading-snug backdrop-blur overflow-hidden whitespace-pre-wrap break-words ${
+                        sentenceErr
+                          ? 'bg-destructive/15 text-destructive border-destructive/50'
+                          : isSentenceLoading
+                            ? 'bg-background/80 text-foreground'
+                            : hasTranslation
+                              ? 'bg-background/75 text-foreground'
+                              : 'bg-background/65 text-muted-foreground'
+                      }`}
                       style={{
                         left: `${box.x * 100}%`,
                         top: `${box.y * 100}%`,
                         width: `${box.w * 100}%`,
                         height: `${box.h * 100}%`,
-                        borderColor,
+                        borderColor: sentenceErr ? undefined : borderColor,
                         fontSize: `${fontSize}px`,
                         lineHeight: `${lineHeight}px`,
                       }}
                       aria-label="Sentence translation"
+                      title={sentenceErr || undefined}
                     >
                       {text}
                     </button>

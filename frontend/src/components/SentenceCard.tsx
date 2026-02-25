@@ -2,8 +2,16 @@ import { useMemo, useState } from 'react';
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { Segment } from '@/components/Segment';
 import { TranslationSpan } from '@/components/TranslationSpan';
+import { useIsDarkTheme } from '@/hooks/useIsDarkTheme';
 import { generateHighlightColors } from '@/lib/colors';
 import type { ParseResponse, ParsedSegment, SentenceChunk, TranslationPart } from '@/types';
+
+function isTranslationPart(value: unknown): value is TranslationPart {
+  if (!value || typeof value !== 'object') return false;
+
+  const candidate = value as { text?: unknown; segmentIds?: unknown };
+  return typeof candidate.text === 'string' && Array.isArray(candidate.segmentIds);
+}
 
 export function SentenceCard({
   sentence,
@@ -37,9 +45,12 @@ export function SentenceCard({
 
   const segments = result?.segments ?? [];
   const translation = result?.translation ?? '';
-  const translationParts = result?.translationParts ?? [];
+  const translationParts = useMemo(
+    () => (result?.translationParts ?? []).filter(isTranslationPart),
+    [result?.translationParts]
+  );
   const hasAlignmentData = translationParts.length > 0;
-  const isDark = document.documentElement.classList.contains('dark');
+  const isDark = useIsDarkTheme();
 
   const highlightColors = useMemo(
     () => generateHighlightColors(segments.length, isDark),

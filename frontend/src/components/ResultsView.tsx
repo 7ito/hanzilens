@@ -5,6 +5,7 @@ import { Segment } from './Segment';
 import { TranslationSpan } from './TranslationSpan';
 import { ThemeToggle } from './ThemeToggle';
 import { MobileDictionaryModal } from './MobileDictionaryModal';
+import { useIsDarkTheme } from '@/hooks/useIsDarkTheme';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { generateHighlightColors } from '@/lib/colors';
 import type { ParsedSegment, TranslationPart } from '@/types';
@@ -42,7 +43,7 @@ export function ResultsView({
   };
 
   // Detect dark mode for color generation
-  const isDark = document.documentElement.classList.contains('dark');
+  const isDark = useIsDarkTheme();
 
   // Generate highlight colors for all segments
   const highlightColors = useMemo(

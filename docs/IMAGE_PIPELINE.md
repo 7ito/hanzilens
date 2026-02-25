@@ -34,6 +34,10 @@ Key steps:
 - Vision model prompt requests line-level boxes and raw text without correction.
 - Response is parsed into OcrLine objects and normalized to 0-1 coordinates.
 - Empty lines are dropped.
+- Backend enforces geometric reading order before returning lines:
+  - Horizontal text: top-to-bottom, left-to-right.
+  - Vertical text: columns right-to-left, top-to-bottom within each column.
+  - Selection uses lightweight geometry + boundary heuristics (no extra model calls).
 - Chinese content is validated (minimum Chinese characters).
 
 Errors:
@@ -87,7 +91,7 @@ Padding is subtracted from box dimensions when calculating capacity, so the bott
 
 Parsing:
 - Each sentence is parsed using POST /parse with text input.
-- The request includes a context field containing the full OCR text up to that sentence (trimmed and capped at maxContextLength).
+- The request includes a context field containing OCR text before the target sentence (trimmed and capped at maxContextLength).
 - A low concurrency queue (3) runs sentences in the background.
 - Results are cached per sentence ID.
 

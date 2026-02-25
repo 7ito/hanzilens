@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Segment } from './Segment';
 import { TranslationSpan } from './TranslationSpan';
+import { useIsDarkTheme } from '@/hooks/useIsDarkTheme';
 import { generateHighlightColors } from '@/lib/colors';
 import type { ParsedSegment, TranslationPart } from '@/types';
 
@@ -44,7 +45,7 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
 	const [hoveredPartIndex, setHoveredPartIndex] = useState<number | null>(null);
 
 	// Detect dark mode for color generation
-	const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+	const isDark = useIsDarkTheme();
 
 	// Generate highlight colors for all segments
 	const highlightColors = useMemo(

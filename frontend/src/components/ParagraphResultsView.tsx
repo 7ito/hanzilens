@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { SentenceCard } from '@/components/SentenceCard';
 import { MobileDictionaryModal } from '@/components/MobileDictionaryModal';
+import { useIsDarkTheme } from '@/hooks/useIsDarkTheme';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { generateHighlightColors } from '@/lib/colors';
 import type { ParseResponse, ParsedSegment, SentenceChunk } from '@/types';
@@ -40,7 +41,7 @@ export function ParagraphResultsView({
   const [pulseSentenceId, setPulseSentenceId] = useState<string | null>(null);
   const [selectedSegment, setSelectedSegment] = useState<ParsedSegment | null>(null);
   const [showTranslation, setShowTranslation] = useState(false);
-  const isDark = document.documentElement.classList.contains('dark');
+  const isDark = useIsDarkTheme();
   const sentenceRefs = useRef(new Map<string, HTMLDivElement>());
 
   const sentenceColors = useMemo(
@@ -57,18 +58,52 @@ export function ParagraphResultsView({
   }, [sentences, sentenceColors]);
 
   const openSentenceSet = useMemo(() => new Set(openSentenceIds), [openSentenceIds]);
-  const hasLoading = useMemo(
-    () => sentences.some((sentence) => sentenceLoading[sentence.id]),
-    [sentences, sentenceLoading]
-  );
+  const sentenceStatus = useMemo(() => {
+    return sentences.reduce(
+      (acc, sentence) => {
+        if (sentenceLoading[sentence.id]) {
+          acc.loading += 1;
+        } else if (sentenceError[sentence.id]) {
+          acc.failed += 1;
+        } else if (sentenceResults[sentence.id]) {
+          acc.loaded += 1;
+        } else {
+          acc.idle += 1;
+        }
+
+        return acc;
+      },
+      { loading: 0, failed: 0, loaded: 0, idle: 0 }
+    );
+  }, [sentenceError, sentenceLoading, sentenceResults, sentences]);
+  const hasLoading = sentenceStatus.loading > 0;
   const translationText = useMemo(() => {
     const parts = sentences
       .map((sentence) => sentenceResults[sentence.id]?.translation)
       .filter((value): value is string => !!value && value.trim().length > 0);
     return parts.join(' ').trim();
   }, [sentences, sentenceResults]);
+
+  const translationHint = useMemo(() => {
+    if (sentenceStatus.failed > 0 && sentenceStatus.idle > 0) {
+      return 'Some sentences failed to load. Open another sentence to continue.';
+    }
+
+    if (sentenceStatus.failed > 0) {
+      return 'Some sentences failed to load.';
+    }
+
+    if (!isPreparing && !hasLoading && sentenceStatus.idle > 0) {
+      return 'Open a sentence to load translation.';
+    }
+
+    return null;
+  }, [hasLoading, isPreparing, sentenceStatus.failed, sentenceStatus.idle]);
+
   const translationFallback = isPreparing || hasLoading
     ? 'Translating...'
+    : sentenceStatus.idle > 0
+      ? 'Open a sentence to load translation.'
     : 'Translation unavailable.';
   const translationDisplay = translationText || translationFallback;
   const originalTextSegments = useMemo(() => {
@@ -182,6 +217,15 @@ export function ParagraphResultsView({
                     );
                   })}
             </div>
+            {showTranslation && translationHint && (
+              <div
+                className={`mt-2 text-xs ${
+                  sentenceStatus.failed > 0 ? 'text-destructive' : 'text-muted-foreground'
+                }`}
+              >
+                {translationHint}
+              </div>
+            )}
           </div>
         )}
 
