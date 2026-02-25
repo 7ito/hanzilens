@@ -58,14 +58,13 @@ export function DictionaryPopup({ token, onClose, initialPosition }: DictionaryP
   const popup = (
     <Draggable 
       handle=".drag-handle" 
-      bounds="body" 
       nodeRef={nodeRef}
       onStart={bringToFront}
       defaultPosition={initialPosition}
     >
       <div
         ref={nodeRef}
-        className="fixed top-0 left-0"
+        className="absolute top-0 left-0"
         style={{ zIndex }}
         onMouseDown={bringToFront}
       >

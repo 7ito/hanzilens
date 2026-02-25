@@ -2,20 +2,32 @@ import { useState, useEffect, useRef } from 'react';
 import { InputView } from '@/components/InputView';
 import { ResultsView } from '@/components/ResultsView';
 import { ImageResultsView } from '@/components/ImageResultsView';
+import { ParagraphResultsView } from '@/components/ParagraphResultsView';
 import { HelpDialog } from '@/components/HelpDialog';
 import { useParse } from '@/hooks/useParse';
 import { useImageParse } from '@/hooks/useImageParse';
+import { useParagraphParse } from '@/hooks/useParagraphParse';
 import { useAnalytics, AnalyticsEvents } from '@/hooks/useAnalytics';
+import { splitCombinedTextIntoSentences } from '@/lib/sentenceSplit';
 import type { ViewState, ParseInput } from '@/types';
 
 const HAS_VISITED_KEY = 'hanzilens-has-visited';
+const PARAGRAPH_THRESHOLD = 150;
+
+function shouldUseParagraphMode(text: string): boolean {
+  if (text.length > PARAGRAPH_THRESHOLD) return true;
+  const sentences = splitCombinedTextIntoSentences(text);
+  return sentences.length > 1;
+}
 
 export function App() {
   const [view, setView] = useState<ViewState>('input');
   const [showHelp, setShowHelp] = useState(false);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [paragraphText, setParagraphText] = useState('');
   const { isLoading, translation, translationParts, segments, parse, reset } = useParse();
   const imageParse = useImageParse();
+  const paragraphParse = useParagraphParse();
   const { trackEvent, trackPageView } = useAnalytics();
   const hasTrackedInitialView = useRef(false);
 
@@ -46,6 +58,15 @@ export function App() {
       return;
     }
 
+    const trimmed = input.sentence.trim();
+    if (shouldUseParagraphMode(trimmed)) {
+      setParagraphText(trimmed);
+      setView('paragraph-results');
+      trackPageView('paragraph-results');
+      await paragraphParse.start(trimmed);
+      return;
+    }
+
     setView('results');
     trackPageView('results');
     await parse(input);
@@ -54,7 +75,9 @@ export function App() {
   const handleBack = () => {
     reset();
     imageParse.reset();
+    paragraphParse.reset();
     setImageDataUrl(null);
+    setParagraphText('');
     setView('input');
     trackPageView('input');
   };
@@ -84,6 +107,20 @@ export function App() {
           isLoading={isLoading}
           onBack={handleBack}
           onHelpClick={handleHelpClick}
+        />
+      ) : view === 'paragraph-results' ? (
+        <ParagraphResultsView
+          text={paragraphText}
+          isPreparing={paragraphParse.isPreparing}
+          error={paragraphParse.error}
+          sentences={paragraphParse.sentences}
+          sentenceResults={paragraphParse.sentenceResults}
+          sentenceLoading={paragraphParse.sentenceLoading}
+          sentenceError={paragraphParse.sentenceError}
+          openSentenceIds={paragraphParse.openSentenceIds}
+          onBack={handleBack}
+          onHelpClick={handleHelpClick}
+          onSelectSentence={paragraphParse.selectSentence}
         />
       ) : (
         imageDataUrl && (

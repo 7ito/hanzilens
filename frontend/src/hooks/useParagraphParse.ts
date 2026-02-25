@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { startOcr, startParse } from '@/lib/api';
+import { startParse } from '@/lib/api';
 import { parseSseResponse } from '@/lib/parseSse';
 import { splitCombinedTextIntoSentences } from '@/lib/sentenceSplit';
-import type { OcrResult, ParseResponse, SentenceChunk } from '@/types';
+import type { ParseResponse, SentenceChunk } from '@/types';
 
-interface ImageParseState {
-  isLoadingOcr: boolean;
-  ocrError: string | null;
-  ocrResult: OcrResult | null;
+interface ParagraphParseState {
+  isPreparing: boolean;
+  error: string | null;
   openSentenceIds: string[];
   sentences: SentenceChunk[];
   sentenceResults: Record<string, ParseResponse>;
@@ -15,10 +14,9 @@ interface ImageParseState {
   sentenceError: Record<string, string | null>;
 }
 
-const initialState: ImageParseState = {
-  isLoadingOcr: false,
-  ocrError: null,
-  ocrResult: null,
+const initialState: ParagraphParseState = {
+  isPreparing: false,
+  error: null,
   openSentenceIds: [],
   sentences: [],
   sentenceResults: {},
@@ -37,9 +35,19 @@ function buildSentenceContext(combinedText: string, sentence: SentenceChunk): st
   return rawContext.slice(rawContext.length - MAX_CONTEXT_LENGTH);
 }
 
-export function useImageParse() {
-  const [state, setState] = useState<ImageParseState>(initialState);
-  const stateRef = useRef<ImageParseState>(initialState);
+function ensureSingleChunk(text: string): SentenceChunk {
+  const trimmed = text.trim();
+  return {
+    id: 'sentence-1',
+    text: trimmed,
+    startOffset: text.indexOf(trimmed),
+    endOffset: text.indexOf(trimmed) + trimmed.length,
+  };
+}
+
+export function useParagraphParse() {
+  const [state, setState] = useState<ParagraphParseState>(initialState);
+  const stateRef = useRef<ParagraphParseState>(initialState);
   const queueRef = useRef<string[]>([]);
   const inFlightRef = useRef(0);
   const sentenceMapRef = useRef<Record<string, SentenceChunk>>({});
@@ -147,17 +155,25 @@ export function useImageParse() {
     }
   }, [enqueueSentence, runQueue]);
 
-  const start = useCallback(async (image: string) => {
+  const start = useCallback(async (text: string) => {
     reset();
-    setState((prev) => ({ ...prev, isLoadingOcr: true, ocrError: null }));
+    setState((prev) => ({ ...prev, isPreparing: true, error: null }));
     sessionIdRef.current += 1;
     const sessionId = sessionIdRef.current;
 
     try {
-      const result = await startOcr(image);
-      const combinedText = result.lines.map((line) => line.text).join('\n');
+      const combinedText = text.trim();
+      if (!combinedText) {
+        setState((prev) => ({ ...prev, error: 'Text cannot be empty' }));
+        return;
+      }
+
       combinedTextRef.current = combinedText;
-      const sentences = splitCombinedTextIntoSentences(combinedText);
+      let sentences = splitCombinedTextIntoSentences(combinedText);
+      if (sentences.length === 0) {
+        sentences = [ensureSingleChunk(combinedText)];
+      }
+
       const sentenceMap: Record<string, SentenceChunk> = {};
       sentences.forEach((sentence) => {
         sentenceMap[sentence.id] = sentence;
@@ -168,7 +184,6 @@ export function useImageParse() {
 
       setState((prev) => ({
         ...prev,
-        ocrResult: result,
         sentences,
         openSentenceIds: [],
       }));
@@ -176,10 +191,10 @@ export function useImageParse() {
       sentences.forEach((sentence) => enqueueSentence(sentence.id));
       runQueue(sessionId);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to extract text from image';
-      setState((prev) => ({ ...prev, ocrError: message }));
+      const message = error instanceof Error ? error.message : 'Failed to parse text';
+      setState((prev) => ({ ...prev, error: message }));
     } finally {
-      setState((prev) => ({ ...prev, isLoadingOcr: false }));
+      setState((prev) => ({ ...prev, isPreparing: false }));
     }
   }, [enqueueSentence, reset, runQueue]);
 

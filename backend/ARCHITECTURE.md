@@ -43,7 +43,7 @@ interface ParsedSegment {
 }
 
 interface ParseRequest {
-  sentence: string;  // Max 1000 chars, min 25% Chinese
+  sentence: string;  // Max 500 chars; if no Chinese, server echoes translation
 }
 
 interface LookupRequest {

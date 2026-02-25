@@ -33,7 +33,7 @@ export async function lookupDefinition(token: string): Promise<LookupResponse> {
  */
 export async function startParse(input: ParseInput): Promise<Response> {
   const body = input.type === 'text' 
-    ? { sentence: input.sentence }
+    ? { sentence: input.sentence, ...(input.context ? { context: input.context } : {}) }
     : { image: input.image };
 
   const response = await fetch(`${API_BASE_URL}/parse`, {
@@ -74,29 +74,10 @@ export async function startOcr(image: string): Promise<OcrResult> {
 }
 
 /**
- * Check if text has sufficient Chinese characters (at least 25%)
- * CJK punctuation is excluded from the calculation so characters like
- * 《》「」 etc. don't count against the Chinese ratio.
+ * Check if text contains at least one Chinese character.
  */
-export function hasChineseText(text: string, threshold = 0.25): boolean {
-  if (!text || text.length < 2) return false;
-
-  const chineseRegex = /[\u4e00-\u9fff]/g;
-  // CJK punctuation ranges:
-  // - U+3000-U+303F: CJK Symbols and Punctuation (。、「」『』【】《》〈〉 etc.)
-  // - U+FF00-U+FFEF: Halfwidth and Fullwidth Forms (，；： fullwidth punctuation)
-  // - U+2018-U+201F: General Punctuation subset (curly quotes used in CJK)
-  const cjkPunctuationRegex = /[\u3000-\u303f\uff00-\uffef\u2018-\u201f]/g;
-
-  const chineseMatches = text.match(chineseRegex) || [];
-  const cjkPunctuationMatches = text.match(cjkPunctuationRegex) || [];
-  
-  const effectiveLength = text.length - cjkPunctuationMatches.length;
-  
-  // If the text is only CJK punctuation, consider it valid
-  if (effectiveLength === 0) return true;
-  
-  const ratio = chineseMatches.length / effectiveLength;
-
-  return ratio >= threshold;
+export function hasChineseText(text: string): boolean {
+  if (!text) return false;
+  const chineseRegex = /[\u4e00-\u9fff]/;
+  return chineseRegex.test(text);
 }

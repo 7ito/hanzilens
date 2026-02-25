@@ -19,6 +19,29 @@ import {
 
 const router = Router();
 
+const CHINESE_CHAR_REGEX = /[\u4e00-\u9fff]/;
+
+function hasChineseChar(text: string): boolean {
+  return CHINESE_CHAR_REGEX.test(text);
+}
+
+function sendImmediateTranslation(res: ExpressResponse, sentence: string): void {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  const payload = JSON.stringify({
+    translation: sentence,
+    segments: [],
+    translationParts: [],
+  });
+  const sseChunk = `data: ${JSON.stringify({ choices: [{ delta: { content: payload } }] })}\n`;
+  res.write(sseChunk);
+  res.write('data: [DONE]\n');
+  res.end();
+}
+
 /**
  * POST /ocr
  *
@@ -410,11 +433,16 @@ router.post('/parse', parseRateLimit, validateParseInput, async (req: ValidatedR
       }
 
       const sentence = req.validatedText!;
-      
+
+      if (!hasChineseChar(sentence)) {
+        sendImmediateTranslation(res, sentence);
+        return;
+      }
+       
       // Build pinyin map for context-aware correction (~5ms)
       const pinyinMap = buildPinyinMap(sentence);
       
-      aiResponse = await streamParse(sentence);
+      aiResponse = await streamParse(sentence, req.validatedContext);
       
       // Text - stream with real-time pinyin correction
       await streamResponseWithCorrection(aiResponse, req, res, pinyinMap);

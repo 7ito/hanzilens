@@ -107,7 +107,7 @@ remake/backend/
 1. ~~OpenRouter API wrapper with streaming~~
 2. ~~Prompt template for Chinese segmentation (model provides translation)~~
 3. ~~`POST /parse` endpoint with SSE streaming~~
-4. ~~Input validation middleware (25% Chinese, 500 char limit)~~
+4. ~~Input validation middleware (no ratio check, 500 char limit)~~
 
 **Deliverables:**
 - [x] AI service (`src/services/ai.ts`)
@@ -127,7 +127,7 @@ remake/backend/
 ### Phase 5: Frontend Remake [COMPLETED]
 
 1. ~~Set up React + TypeScript + Vite + shadcn/ui~~
-2. ~~Create InputView with validation (150 char limit, 25% Chinese)~~
+2. ~~Create InputView with validation (150 char limit, no ratio check)~~
 3. ~~Implement SSE streaming with progressive rendering~~
 4. ~~Create ResultsView with tone-colored pinyin~~
 5. ~~Create draggable DictionaryPopup~~
@@ -208,7 +208,7 @@ interface ParsedSegment {
 }
 
 interface ParseRequest {
-  sentence: string;  // Max 1000 chars, min 25% Chinese
+  sentence: string;  // Max 500 chars; if no Chinese, server echoes translation
 }
 
 interface ParseResponse {

@@ -6,7 +6,7 @@
  * Input for the parse endpoint - either text or image
  */
 export type ParseInput = 
-  | { type: 'text'; sentence: string }
+  | { type: 'text'; sentence: string; context?: string }
   | { type: 'image'; image: string }; // base64 data URL
 
 export interface OcrBox {
@@ -84,4 +84,4 @@ export interface LookupResponse {
 /**
  * Application view state
  */
-export type ViewState = 'input' | 'results' | 'image-results';
+export type ViewState = 'input' | 'results' | 'image-results' | 'paragraph-results';

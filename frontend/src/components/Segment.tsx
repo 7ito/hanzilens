@@ -77,8 +77,8 @@ export function Segment({
       if (!showPopup) {
         // Calculate position when opening popup
         const rect = segmentRef.current.getBoundingClientRect();
-        const x = rect.left + rect.width / 2 - POPUP_WIDTH / 2;
-        const y = rect.bottom + 8; // 8px gap below segment
+        const x = rect.left + rect.width / 2 - POPUP_WIDTH / 2 + window.scrollX;
+        const y = rect.bottom + 8 + window.scrollY; // 8px gap below segment
         setPopupPosition({ x, y });
       }
       setShowPopup(!showPopup);

@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { hasChineseText } from '@/lib/api';
 import { Loader2, CircleHelp } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { ImageInput } from './ImageInput';
@@ -10,8 +9,7 @@ import { LogoA } from './LogoA';
 import { useAnalytics, AnalyticsEvents } from '@/hooks/useAnalytics';
 import type { ParseInput } from '@/types';
 
-const CHAR_LIMIT = 300;
-const MIN_CHINESE_RATIO = 0.25;
+const CHAR_LIMIT = 1500;
 
 // Example sentences for rotating placeholder
 const EXAMPLE_SENTENCES = [
@@ -43,9 +41,9 @@ export function InputView({ onSubmit, isLoading, onHelpClick }: InputViewProps) 
 	const charCount = text.length;
 	const isOverLimit = charCount > CHAR_LIMIT;
 
-	// Text is valid if it meets the Chinese ratio and length requirements
+	// Text is valid if it meets the length requirements
 	useEffect(() => {
-		setIsTextValid(hasChineseText(text, MIN_CHINESE_RATIO) && !isOverLimit);
+		setIsTextValid(text.trim().length > 0 && !isOverLimit);
 	}, [text, isOverLimit]);
 
 	// Rotating placeholder animation
@@ -185,14 +183,7 @@ export function InputView({ onSubmit, isLoading, onHelpClick }: InputViewProps) 
 								{charCount}/{CHAR_LIMIT}
 							</div>
 
-							{/* Chinese ratio warning */}
-							{text.length > 1 && !hasChineseText(text, MIN_CHINESE_RATIO) && (
-								<div className="text-sm text-destructive">
-									Please ensure at least 25% of text is Chinese characters
-								</div>
-							)}
-
-							{/* Over limit warning */}
+						{/* Over limit warning */}
 							{isOverLimit && (
 								<div className="text-sm text-destructive">
 									Maximum character limit exceeded ({CHAR_LIMIT} characters)

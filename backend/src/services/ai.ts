@@ -9,7 +9,15 @@ const TEMPERATURE = 0.2;
 const SYSTEM_PROMPT = `You are a Chinese language segmentation assistant. Your task is to break down Chinese sentences into individual words (词语) and provide linguistic information for each, along with alignment to the English translation.
 
 ## Input
-You will receive a Chinese sentence.
+You will receive a Chinese target sentence.
+You may also receive a context paragraph that comes before the target sentence.
+
+When context is provided, it will appear like this:
+Context:
+<context text>
+
+Target sentence:
+<sentence>
 
 ## Output
 Return a JSON object with these fields IN THIS EXACT ORDER:
@@ -41,6 +49,11 @@ Rules for translationParts:
 
 ## Rules
 
+### Context Usage
+- Use the context only to disambiguate translation and definitions
+- Do NOT segment, rewrite, or translate the context text
+- Segment ONLY the target sentence
+
 ### Pinyin Format
 - Use tone numbers: ni3 hao3, bu4 shi4, ma5
 - Use u: for ü: nu:3, lü4
@@ -58,6 +71,7 @@ Rules for translationParts:
 - Keep word-level tokens (usually 1-3 characters) and avoid long merged phrases
 - Avoid single-character tokens unless the character stands alone or is a particle
 - Keep numbers, Latin words, and mixed alphanumerics as single tokens
+- Preserve English words exactly in the translation; do not paraphrase them
 
 ### Special Cases
 - Punctuation: {"id": N, "token": "。", "pinyin": "", "definition": ""}
@@ -333,7 +347,7 @@ export function getVisionConfigStatus(): string {
  * Stream a chat completion from OpenRouter.
  * Returns a ReadableStream that yields SSE chunks.
  */
-export async function streamParse(sentence: string): Promise<Response> {
+export async function streamParse(sentence: string, context?: string): Promise<Response> {
   if (!isConfigured()) {
     throw new Error(`OpenRouter not configured: ${getConfigStatus()}`);
   }
@@ -360,7 +374,9 @@ export async function streamParse(sentence: string): Promise<Response> {
           },
           {
             role: 'user',
-            content: sentence,
+            content: context
+              ? `Context:\n${context}\n\nTarget sentence:\n${sentence}`
+              : sentence,
           },
         ],
         stream: true,

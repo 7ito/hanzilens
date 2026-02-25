@@ -50,7 +50,7 @@ export const config = {
   // Input validation
   validation: {
     maxSentenceLength: 500, // Maximum characters in a sentence
-    minChineseRatio: 0.25,  // At least 25% Chinese characters
+    maxContextLength: 1500, // Maximum characters in optional context
   },
 } as const;
 
