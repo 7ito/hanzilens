@@ -13,9 +13,25 @@ function parseCorsOrigins(): string[] {
   return origins;
 }
 
+// Parse TRUST_PROXY env var: number string -> number, "true" -> true, unset -> false
+function parseTrustProxy(): boolean | number {
+  const value = process.env.TRUST_PROXY;
+  if (!value) return false;
+  if (value === 'true') return true;
+  const num = parseInt(value, 10);
+  if (Number.isFinite(num) && num > 0) return num;
+  return false;
+}
+
 export const config = {
   port: parseInt(process.env.PORT || '5000', 10),
   corsOrigins: parseCorsOrigins(),
+  trustProxy: parseTrustProxy(),
+
+  // Eval endpoint (for model benchmarking)
+  eval: {
+    enabled: process.env.ENABLE_EVAL === 'true',
+  },
   
   // Cache settings
   cache: {

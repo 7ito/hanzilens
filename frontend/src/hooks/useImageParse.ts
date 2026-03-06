@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { startOcr } from '@/lib/api';
 import { useSentenceParseQueue } from '@/hooks/useSentenceParseQueue';
+import { isAbortError } from '@/lib/abort';
 import { splitCombinedTextIntoSentences } from '@/lib/sentenceSplit';
 import type { OcrResult } from '@/types';
 
@@ -15,10 +16,6 @@ const initialState: ImageParseState = {
   ocrError: null,
   ocrResult: null,
 };
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === 'AbortError';
-}
 
 export function useImageParse() {
   const [state, setState] = useState<ImageParseState>(initialState);

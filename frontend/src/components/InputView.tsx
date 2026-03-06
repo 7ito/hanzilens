@@ -30,7 +30,6 @@ interface InputViewProps {
 export function InputView({ onSubmit, isLoading, onHelpClick }: InputViewProps) {
 	const [text, setText] = useState('');
 	const [selectedImage, setSelectedImage] = useState<string | null>(null);
-	const [isTextValid, setIsTextValid] = useState(false);
 	const { trackEvent } = useAnalytics();
 
 	// Rotating placeholder state
@@ -40,11 +39,7 @@ export function InputView({ onSubmit, isLoading, onHelpClick }: InputViewProps) 
 
 	const charCount = text.length;
 	const isOverLimit = charCount > CHAR_LIMIT;
-
-	// Text is valid if it meets the length requirements
-	useEffect(() => {
-		setIsTextValid(text.trim().length > 0 && !isOverLimit);
-	}, [text, isOverLimit]);
+	const isTextValid = text.trim().length > 0 && !isOverLimit;
 
 	// Rotating placeholder animation
 	useEffect(() => {

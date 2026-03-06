@@ -11,8 +11,11 @@ validateConfig();
 
 const app = express();
 
-// Trust proxy (for Caddy/nginx/Cloudflare - ensures correct client IP for rate limiting)
-app.set('trust proxy', 1);
+// Trust proxy for correct client IP detection (affects rate limiting)
+// Configured via TRUST_PROXY env var: number of hops (e.g., 1) or "true" for all
+if (config.trustProxy !== false) {
+  app.set('trust proxy', config.trustProxy);
+}
 
 // Security middleware - set various HTTP headers
 app.use(helmet());
@@ -46,11 +49,11 @@ app.get('/', (_req, res) => {
 app.use(dictionaryRouter);
 app.use(parseRouter);
 
-// Eval routes - development only (no rate limiting, allows model override)
-if (process.env.NODE_ENV !== 'production') {
+// Eval routes - opt-in via ENABLE_EVAL=true env var (allows model override for benchmarking)
+if (config.eval.enabled) {
   import('./routes/eval.js').then(evalRouter => {
     app.use('/eval', evalRouter.default);
-    console.log('Eval routes enabled (development mode)');
+    console.log('Eval routes enabled (ENABLE_EVAL=true)');
   }).catch(err => {
     console.error('Failed to load eval routes:', err);
   });

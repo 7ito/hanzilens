@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, startParse } from '@/lib/api';
 import { parseSseResponse } from '@/lib/parseSse';
+import { createAbortError, isAbortError } from '@/lib/abort';
 import type { ParseResponse, SentenceChunk } from '@/types';
 
 const MAX_CONCURRENCY = 3;
@@ -39,16 +40,6 @@ const initialState: SentenceParseQueueState = {
   sentenceLoading: {},
   sentenceError: {},
 };
-
-function createAbortError(): Error {
-  const error = new Error('The operation was aborted');
-  error.name = 'AbortError';
-  return error;
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === 'AbortError';
-}
 
 function shouldRetry(error: unknown): error is ApiError {
   return error instanceof ApiError && error.status === 429;

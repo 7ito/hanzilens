@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import posthog from 'posthog-js';
 import { startParse } from '@/lib/api';
 import { parseSseResponse } from '@/lib/parseSse';
+import { isAbortError } from '@/lib/abort';
 import { AnalyticsEvents } from '@/hooks/useAnalytics';
 import type { ParsedSegment, TranslationPart, ParseInput } from '@/types';
 
@@ -32,10 +33,6 @@ interface StreamParseResult {
   translationParts?: TranslationPart[];
   error?: string;
   message?: string;
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === 'AbortError';
 }
 
 /**

@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { Segment } from '@/components/Segment';
 import { TranslationSpan } from '@/components/TranslationSpan';
-import { useIsDarkTheme } from '@/hooks/useIsDarkTheme';
-import { generateHighlightColors } from '@/lib/colors';
+import { useSegmentHighlight } from '@/hooks/useSegmentHighlight';
+import { setAlpha } from '@/lib/style-utils';
 import type { ParseResponse, ParsedSegment, SentenceChunk, TranslationPart } from '@/types';
 
 function isTranslationPart(value: unknown): value is TranslationPart {
@@ -40,9 +40,6 @@ export function SentenceCard({
   onHoverEnd: () => void;
   onSegmentClick?: (segment: ParsedSegment) => void;
 }) {
-  const [hoveredSegmentId, setHoveredSegmentId] = useState<number | null>(null);
-  const [hoveredPartIndex, setHoveredPartIndex] = useState<number | null>(null);
-
   const segments = result?.segments ?? [];
   const translation = result?.translation ?? '';
   const translationParts = useMemo(
@@ -50,42 +47,15 @@ export function SentenceCard({
     [result?.translationParts]
   );
   const hasAlignmentData = translationParts.length > 0;
-  const isDark = useIsDarkTheme();
 
-  const highlightColors = useMemo(
-    () => generateHighlightColors(segments.length, isDark),
-    [segments.length, isDark]
-  );
-
-  const segmentColorMap = useMemo(() => {
-    const map = new Map<number, string>();
-    segments.forEach((seg, idx) => {
-      map.set(seg.id, highlightColors[idx]);
-    });
-    return map;
-  }, [segments, highlightColors]);
-
-  const highlightedSegmentIds = useMemo(() => {
-    if (hoveredSegmentId !== null) {
-      return new Set([hoveredSegmentId]);
-    }
-    if (hoveredPartIndex !== null && translationParts[hoveredPartIndex]) {
-      return new Set(translationParts[hoveredPartIndex].segmentIds);
-    }
-    return new Set<number>();
-  }, [hoveredSegmentId, hoveredPartIndex, translationParts]);
-
-  const isPartHighlighted = (part: TranslationPart): boolean => {
-    if (hoveredSegmentId !== null) {
-      return part.segmentIds.includes(hoveredSegmentId);
-    }
-    return false;
-  };
-
-  const getPartHighlightColor = (part: TranslationPart): string | undefined => {
-    if (part.segmentIds.length === 0) return undefined;
-    return segmentColorMap.get(part.segmentIds[0]);
-  };
+  const {
+    highlightColors,
+    highlightedSegmentIds,
+    setHoveredSegmentId,
+    setHoveredPartIndex,
+    isPartHighlighted,
+    getPartHighlightColor,
+  } = useSegmentHighlight({ segments, translationParts });
 
   return (
     <div
@@ -138,10 +108,7 @@ export function SentenceCard({
                       <TranslationSpan
                         key={idx}
                         part={part}
-                        isHighlighted={
-                          isPartHighlighted(part) ||
-                          (hoveredPartIndex === idx && part.segmentIds.length > 0)
-                        }
+                        isHighlighted={isPartHighlighted(part, idx)}
                         highlightColor={getPartHighlightColor(part)}
                         onMouseEnter={() => setHoveredPartIndex(idx)}
                         onMouseLeave={() => setHoveredPartIndex(null)}
@@ -170,10 +137,4 @@ export function SentenceCard({
       </div>
     </div>
   );
-}
-
-function setAlpha(color: string, alpha: number): string {
-  const match = color.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([0-9.]+)\)/);
-  if (!match) return color;
-  return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`;
 }

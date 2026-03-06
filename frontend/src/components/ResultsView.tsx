@@ -1,13 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { ArrowLeft, Loader2, CircleHelp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Segment } from './Segment';
 import { TranslationSpan } from './TranslationSpan';
 import { ThemeToggle } from './ThemeToggle';
 import { MobileDictionaryModal } from './MobileDictionaryModal';
-import { useIsDarkTheme } from '@/hooks/useIsDarkTheme';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { generateHighlightColors } from '@/lib/colors';
+import { useSegmentHighlight } from '@/hooks/useSegmentHighlight';
 import type { ParsedSegment, TranslationPart } from '@/types';
 
 interface ResultsViewProps {
@@ -27,66 +26,22 @@ export function ResultsView({
   onBack,
   onHelpClick,
 }: ResultsViewProps) {
-  // Track which segment is being hovered (by id)
-  const [hoveredSegmentId, setHoveredSegmentId] = useState<number | null>(null);
-  // Track which translation part is being hovered (by index)
-  const [hoveredPartIndex, setHoveredPartIndex] = useState<number | null>(null);
-  // Track selected segment for mobile dictionary modal
   const [selectedSegment, setSelectedSegment] = useState<ParsedSegment | null>(null);
-  
-  // Check if we're on mobile
   const isMobile = useIsMobile();
 
-  // Handle segment click - opens mobile modal on mobile devices
+  const {
+    highlightColors,
+    highlightedSegmentIds,
+    setHoveredSegmentId,
+    setHoveredPartIndex,
+    isPartHighlighted,
+    getPartHighlightColor,
+  } = useSegmentHighlight({ segments, translationParts });
+
   const handleSegmentClick = (segment: ParsedSegment) => {
     setSelectedSegment(segment);
   };
 
-  // Detect dark mode for color generation
-  const isDark = useIsDarkTheme();
-
-  // Generate highlight colors for all segments
-  const highlightColors = useMemo(
-    () => generateHighlightColors(segments.length, isDark),
-    [segments.length, isDark]
-  );
-
-  // Build a map from segment id to its color
-  const segmentColorMap = useMemo(() => {
-    const map = new Map<number, string>();
-    segments.forEach((seg, idx) => {
-      map.set(seg.id, highlightColors[idx]);
-    });
-    return map;
-  }, [segments, highlightColors]);
-
-  // Determine which segment IDs should be highlighted
-  const highlightedSegmentIds = useMemo(() => {
-    if (hoveredSegmentId !== null) {
-      return new Set([hoveredSegmentId]);
-    }
-    if (hoveredPartIndex !== null && translationParts[hoveredPartIndex]) {
-      return new Set(translationParts[hoveredPartIndex].segmentIds);
-    }
-    return new Set<number>();
-  }, [hoveredSegmentId, hoveredPartIndex, translationParts]);
-
-  // Check if a translation part should be highlighted
-  const isPartHighlighted = (part: TranslationPart): boolean => {
-    if (hoveredSegmentId !== null) {
-      return part.segmentIds.includes(hoveredSegmentId);
-    }
-    return false;
-  };
-
-  // Get highlight color for a translation part (use first matching segment's color)
-  const getPartHighlightColor = (part: TranslationPart): string | undefined => {
-    if (part.segmentIds.length === 0) return undefined;
-    // Use the first segment's color
-    return segmentColorMap.get(part.segmentIds[0]);
-  };
-
-  // Check if we have valid translationParts for alignment highlighting
   const hasAlignmentData = translationParts.length > 0;
 
   return (
@@ -118,10 +73,7 @@ export function ResultsView({
                 <TranslationSpan
                   key={idx}
                   part={part}
-                  isHighlighted={
-                    isPartHighlighted(part) ||
-                    (hoveredPartIndex === idx && part.segmentIds.length > 0)
-                  }
+                  isHighlighted={isPartHighlighted(part, idx)}
                   highlightColor={getPartHighlightColor(part)}
                   onMouseEnter={() => setHoveredPartIndex(idx)}
                   onMouseLeave={() => setHoveredPartIndex(null)}

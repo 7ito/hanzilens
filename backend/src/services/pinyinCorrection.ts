@@ -14,6 +14,7 @@
 
 import { pinyin } from 'pinyin-pro';
 import { getCharacterReadings, getTokenPinyin } from './dictionary.js';
+import { hasChinese, isChineseChar } from '../utils/chinese.js';
 
 /**
  * Result type from pinyin-pro's pinyin function with type: 'all'
@@ -23,20 +24,6 @@ interface PinyinDetailResult {
   pinyin: string;
   num: number; // tone number (1-4, 0 for neutral)
   isZh: boolean;
-}
-
-/**
- * Check if a string contains Chinese characters
- */
-function containsChinese(text: string): boolean {
-  return /[\u4e00-\u9fff]/.test(text);
-}
-
-/**
- * Check if a character is a Chinese character
- */
-function isChineseChar(char: string): boolean {
-  return /[\u4e00-\u9fff]/.test(char);
 }
 
 /**
@@ -214,7 +201,7 @@ function shiftMapIndices(map: Map<number, string>, offset: number): Map<number, 
  */
 export function getCorrectPinyin(token: string): string {
   // Skip non-Chinese tokens
-  if (!token || !containsChinese(token)) {
+  if (!token || !hasChinese(token)) {
     return '';
   }
 
@@ -331,7 +318,7 @@ export function getPinyinFromMap(
   token: string, 
   startIndex: number
 ): string {
-  if (!token || !containsChinese(token)) {
+  if (!token || !hasChinese(token)) {
     return '';
   }
   

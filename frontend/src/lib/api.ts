@@ -2,6 +2,7 @@
  * API client for HanziLens backend
  */
 
+import { hasChinese } from '@/lib/chinese';
 import type { LookupResponse, OcrResult, ParseInput } from '@/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -126,6 +127,5 @@ export async function startOcr(image: string, signal?: AbortSignal): Promise<Ocr
  */
 export function hasChineseText(text: string): boolean {
   if (!text) return false;
-  const chineseRegex = /[\u4e00-\u9fff]/;
-  return chineseRegex.test(text);
+  return hasChinese(text);
 }

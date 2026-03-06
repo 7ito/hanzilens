@@ -1,15 +1,11 @@
 import { IncompleteJsonParser } from 'incomplete-json-parser';
+import { createAbortError } from '@/lib/abort';
+import { validateParseResponse, isValidPartialResponse } from '@/lib/validation';
 import type { ParseResponse } from '@/types';
 
 interface ParseSseOptions {
   signal?: AbortSignal;
   onPartial?: (partial: unknown) => void;
-}
-
-function createAbortError(): Error {
-  const error = new Error('The operation was aborted');
-  error.name = 'AbortError';
-  return error;
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -43,7 +39,7 @@ function emitPartial(contentBuffer: string, onPartial?: (partial: unknown) => vo
 
   try {
     const partial = IncompleteJsonParser.parse(contentBuffer);
-    if (partial && typeof partial === 'object') {
+    if (partial && typeof partial === 'object' && isValidPartialResponse(partial)) {
       onPartial(partial);
     }
   } catch {
@@ -111,5 +107,18 @@ export async function parseSseResponse(response: Response, options: ParseSseOpti
     throw new Error('Empty response from parse');
   }
 
-  return JSON.parse(contentBuffer) as ParseResponse;
+  let rawResult: unknown;
+  try {
+    rawResult = JSON.parse(contentBuffer);
+  } catch {
+    throw new Error('Invalid response from parse');
+  }
+
+  const validated = validateParseResponse(rawResult);
+  if (!validated) {
+    console.error('Parse response validation failed:', rawResult);
+    throw new Error('Invalid response format from parse');
+  }
+
+  return validated;
 }

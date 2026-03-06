@@ -1,5 +1,8 @@
 import { config } from '../config/index.js';
 import { orderOcrLines } from './ocrOrder.js';
+import { CHINESE_CHAR_REGEX_G } from '../utils/chinese.js';
+import { ParseResponseSchema, type ValidatedParseResponse } from '../schemas/parse.js';
+import { ZodError } from 'zod';
 
 // Request timeout for AI calls (90 seconds)
 const AI_TIMEOUT_MS = 90_000;
@@ -160,14 +163,11 @@ Return a JSON object in this exact shape:
 
 If no text is found, return: {"lines": []}`;
 
-// Regex to match Chinese characters (CJK Unified Ideographs)
-const CHINESE_CHAR_REGEX = /[\u4e00-\u9fff]/g;
-
 /**
  * Validate OCR-extracted text has sufficient Chinese content
  */
 function validateOcrText(text: string): { valid: boolean; error?: string } {
-  const chineseChars = text.match(CHINESE_CHAR_REGEX) || [];
+  const chineseChars = text.match(CHINESE_CHAR_REGEX_G) || [];
   if (chineseChars.length < config.ocr.minChineseChars) {
     return { valid: false, error: 'Could not extract sufficient Chinese text from image' };
   }
@@ -327,6 +327,10 @@ export function isVisionConfigured(): boolean {
 /**
  * Get configuration status message for text parsing
  */
+/**
+ * Get configuration status for server-side logging only.
+ * Never expose the output of these functions to API clients.
+ */
 export function getConfigStatus(): string {
   const issues: string[] = [];
   if (!config.openrouter.apiKey) issues.push('OPENROUTER_API_KEY not set');
@@ -334,9 +338,6 @@ export function getConfigStatus(): string {
   return issues.length > 0 ? issues.join(', ') : 'configured';
 }
 
-/**
- * Get configuration status message for vision parsing
- */
 export function getVisionConfigStatus(): string {
   const issues: string[] = [];
   if (!config.openrouter.apiKey) issues.push('OPENROUTER_API_KEY not set');
@@ -350,7 +351,8 @@ export function getVisionConfigStatus(): string {
  */
 export async function streamParse(sentence: string, context?: string): Promise<Response> {
   if (!isConfigured()) {
-    throw new Error(`OpenRouter not configured: ${getConfigStatus()}`);
+    console.error(`OpenRouter not configured: ${getConfigStatus()}`);
+    throw new Error('AI service not configured');
   }
 
   // Set up timeout for the request
@@ -419,7 +421,8 @@ export async function streamParse(sentence: string, context?: string): Promise<R
  */
 async function extractLinesFromImage(imageDataUrl: string): Promise<OcrResult> {
   if (!isVisionConfigured()) {
-    throw new Error(`OpenRouter vision not configured: ${getVisionConfigStatus()}`);
+    console.error(`OpenRouter vision not configured: ${getVisionConfigStatus()}`);
+    throw new Error('AI service not configured');
   }
 
   // Set up timeout for the request
@@ -563,19 +566,7 @@ export interface TokenUsage {
  * Result from non-streaming parse
  */
 export interface ParseNonStreamingResult {
-  result: {
-    translation: string;
-    segments: Array<{
-      id: number;
-      token: string;
-      pinyin: string;
-      definition: string;
-    }>;
-    translationParts: Array<{
-      text: string;
-      segmentIds: number[];
-    }>;
-  };
+  result: ValidatedParseResponse;
   model: string;
   usage: TokenUsage;
 }
@@ -599,11 +590,13 @@ export async function parseNonStreaming(
   const model = modelOverride || config.openrouter.model;
   
   if (!config.openrouter.apiKey) {
-    throw new Error('OPENROUTER_API_KEY not set');
+    console.error('parseNonStreaming: OPENROUTER_API_KEY not set');
+    throw new Error('AI service not configured');
   }
   
   if (!model) {
-    throw new Error('No model specified and OPENROUTER_MODEL not set');
+    console.error('parseNonStreaming: No model specified and OPENROUTER_MODEL not set');
+    throw new Error('AI service not configured');
   }
 
   // Set up timeout for the request
@@ -646,7 +639,7 @@ export async function parseNonStreaming(
     if (!response.ok) {
       const errorBody = await response.text();
       console.error(`OpenRouter API error (${response.status}):`, errorBody);
-      throw new Error(`Model request failed: ${response.status}`);
+      throw new Error('AI service request failed');
     }
 
     const data = await response.json() as {
@@ -659,12 +652,23 @@ export async function parseNonStreaming(
       throw new Error('Empty response from model');
     }
 
-    // Parse the JSON response
-    const result = JSON.parse(content);
+    // Parse and validate the JSON response
+    let rawResult: unknown;
+    try {
+      rawResult = JSON.parse(content);
+    } catch {
+      console.error('parseNonStreaming: Failed to parse JSON from model:', content.slice(0, 200));
+      throw new Error('Invalid AI response format');
+    }
 
-    // Validate basic structure
-    if (!result.segments || !Array.isArray(result.segments)) {
-      throw new Error('Invalid response: missing segments array');
+    let result: ValidatedParseResponse;
+    try {
+      result = ParseResponseSchema.parse(rawResult);
+    } catch (validationError) {
+      if (validationError instanceof ZodError) {
+        console.error('parseNonStreaming: AI response validation failed:', validationError.issues);
+      }
+      throw new Error('Invalid AI response format');
     }
 
     return {

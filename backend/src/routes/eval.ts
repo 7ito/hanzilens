@@ -1,12 +1,12 @@
 /**
- * Evaluation routes - development only
+ * Evaluation routes - opt-in via ENABLE_EVAL=true env var
  * 
  * These endpoints are for model evaluation and testing.
- * They bypass rate limiting and allow model overrides.
+ * They allow model overrides and return detailed pinyin comparison data.
  * 
  * Features:
  * - Model override via request body
- * - No rate limiting
+ * - Rate limited (10 req/min)
  * - Returns token usage
  * - Returns both raw AI pinyin and corrected pinyin for comparison
  * - Uses the full production pinyin-pro correction pipeline
@@ -14,6 +14,7 @@
 
 import { Router, Request, Response } from 'express';
 import { parseNonStreaming } from '../services/ai.js';
+import { evalRateLimit } from '../middleware/rateLimit.js';
 import { 
   buildPinyinMap, 
   getPinyinFromMap, 
@@ -91,7 +92,7 @@ function applyPinyinCorrection(
  * Returns non-streaming JSON with token usage and pinyin comparison.
  * 
  * This endpoint is for model evaluation only and:
- * - Bypasses rate limiting
+ * - Rate limited to 10 req/min
  * - Allows specifying any model via the request body
  * - Returns both raw AI pinyin and corrected pinyin
  * - Returns token usage statistics
@@ -115,7 +116,7 @@ function applyPinyinCorrection(
  *   "usage": { "prompt": 123, "completion": 456, "total": 579 }
  * }
  */
-router.post('/parse', async (req: Request, res: Response) => {
+router.post('/parse', evalRateLimit, async (req: Request, res: Response) => {
   const { sentence, model: modelOverride, provider: providerOverride } = req.body as EvalParseRequest;
 
   // Validation
@@ -155,10 +156,8 @@ router.post('/parse', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Eval parse error:', error);
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: error instanceof Error ? error.message : 'Parse failed',
-    });
+    // Let centralized error handler sanitize the message
+    throw error;
   }
 });
 

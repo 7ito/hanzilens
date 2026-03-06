@@ -7,6 +7,7 @@ import { MobileDictionaryModal } from '@/components/MobileDictionaryModal';
 import { useIsDarkTheme } from '@/hooks/useIsDarkTheme';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { generateHighlightColors } from '@/lib/colors';
+import { setAlpha } from '@/lib/style-utils';
 import type { ParseResponse, ParsedSegment, SentenceChunk } from '@/types';
 
 interface ParagraphResultsViewProps {
@@ -323,10 +324,4 @@ export function ParagraphResultsView({
       />
     </div>
   );
-}
-
-function setAlpha(color: string, alpha: number): string {
-  const match = color.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([0-9.]+)\)/);
-  if (!match) return color;
-  return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`;
 }

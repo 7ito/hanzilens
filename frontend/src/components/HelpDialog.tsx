@@ -1,11 +1,9 @@
-import { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Segment } from './Segment';
 import { TranslationSpan } from './TranslationSpan';
-import { useIsDarkTheme } from '@/hooks/useIsDarkTheme';
-import { generateHighlightColors } from '@/lib/colors';
+import { useSegmentHighlight } from '@/hooks/useSegmentHighlight';
 import type { ParsedSegment, TranslationPart } from '@/types';
 
 interface HelpDialogProps {
@@ -39,53 +37,17 @@ const exampleTranslationParts: TranslationPart[] = [
 ];
 
 export function HelpDialog({ open, onClose }: HelpDialogProps) {
-	// Track which segment is being hovered (by id)
-	const [hoveredSegmentId, setHoveredSegmentId] = useState<number | null>(null);
-	// Track which translation part is being hovered (by index)
-	const [hoveredPartIndex, setHoveredPartIndex] = useState<number | null>(null);
-
-	// Detect dark mode for color generation
-	const isDark = useIsDarkTheme();
-
-	// Generate highlight colors for all segments
-	const highlightColors = useMemo(
-		() => generateHighlightColors(exampleSegments.length, isDark),
-		[isDark]
-	);
-
-	// Build a map from segment id to its color
-	const segmentColorMap = useMemo(() => {
-		const map = new Map<number, string>();
-		exampleSegments.forEach((seg, idx) => {
-			map.set(seg.id, highlightColors[idx]);
-		});
-		return map;
-	}, [highlightColors]);
-
-	// Determine which segment IDs should be highlighted
-	const highlightedSegmentIds = useMemo(() => {
-		if (hoveredSegmentId !== null) {
-			return new Set([hoveredSegmentId]);
-		}
-		if (hoveredPartIndex !== null && exampleTranslationParts[hoveredPartIndex]) {
-			return new Set(exampleTranslationParts[hoveredPartIndex].segmentIds);
-		}
-		return new Set<number>();
-	}, [hoveredSegmentId, hoveredPartIndex]);
-
-	// Check if a translation part should be highlighted
-	const isPartHighlighted = (part: TranslationPart, idx: number): boolean => {
-		if (hoveredSegmentId !== null) {
-			return part.segmentIds.includes(hoveredSegmentId);
-		}
-		return hoveredPartIndex === idx && part.segmentIds.length > 0;
-	};
-
-	// Get highlight color for a translation part (use first matching segment's color)
-	const getPartHighlightColor = (part: TranslationPart): string | undefined => {
-		if (part.segmentIds.length === 0) return undefined;
-		return segmentColorMap.get(part.segmentIds[0]);
-	};
+	const {
+		highlightColors,
+		highlightedSegmentIds,
+		setHoveredSegmentId,
+		setHoveredPartIndex,
+		isPartHighlighted,
+		getPartHighlightColor,
+	} = useSegmentHighlight({
+		segments: exampleSegments,
+		translationParts: exampleTranslationParts,
+	});
 
 	if (!open) return null;
 
