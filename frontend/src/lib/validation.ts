@@ -47,7 +47,11 @@ export function validateParseResponse(data: unknown): ParseResponse | null {
   // Validate every translation part
   if (!data.translationParts.every(isValidTranslationPart)) return null;
 
-  return data as ParseResponse;
+  return {
+    translation: data.translation,
+    segments: data.segments,
+    translationParts: data.translationParts,
+  };
 }
 
 /**
