@@ -62,7 +62,7 @@ describe('useImageParse', () => {
     parseSseResponseMock.mockResolvedValue(PARSE_RESULT);
   });
 
-  it('prefetches first two sentences, then prefetches next two after user opens one', async () => {
+  it('prefetches first two sentences, auto-expands the first sentence, then prefetches next two after user opens one', async () => {
     const { result } = renderHook(() => useImageParse());
 
     await act(async () => {
@@ -73,6 +73,8 @@ describe('useImageParse', () => {
       expect(result.current.sentences.length).toBeGreaterThanOrEqual(5);
       expect(startParseMock).toHaveBeenCalledTimes(2);
     });
+
+    expect(result.current.openSentenceIds).toEqual([result.current.sentences[0].id]);
 
     const thirdSentenceId = result.current.sentences[2].id;
     act(() => {

@@ -351,10 +351,12 @@ export function useSentenceParseQueue(): UseSentenceParseQueueResult {
     inFlightRef.current = 0;
     inFlightSentenceIdsRef.current.clear();
 
+    const initiallyOpenSentenceIds = sentenceOrder.length > 0 ? [sentenceOrder[0]] : [];
+
     setState((prev) => ({
       ...prev,
       sentences,
-      openSentenceIds: [],
+      openSentenceIds: initiallyOpenSentenceIds,
       sentenceResults: {},
       sentenceLoading: {},
       sentenceError: {},

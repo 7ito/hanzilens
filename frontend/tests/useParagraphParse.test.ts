@@ -48,7 +48,7 @@ describe('useParagraphParse', () => {
     parseSseResponseMock.mockResolvedValue(PARSE_RESULT);
   });
 
-  it('prefetches only the first two sentences initially', async () => {
+  it('prefetches only the first two sentences initially and auto-expands the first sentence', async () => {
     const { result } = renderHook(() => useParagraphParse());
 
     await act(async () => {
@@ -64,6 +64,7 @@ describe('useParagraphParse', () => {
     const calledSentences = startParseMock.mock.calls.map(([input]: [ParseInput]) => input.sentence);
 
     expect(calledSentences).toEqual(expectedFirstTwo);
+    expect(result.current.openSentenceIds).toEqual([result.current.sentences[0].id]);
   });
 
   it('when a user opens sentence N, it prefetches N+1 and N+2', async () => {
