@@ -31,8 +31,9 @@ Response body (normalized boxes 0-1):
 ```
 
 Key steps:
-- Vision model prompt requests line-level boxes and raw text without correction.
-- Response is parsed into OcrLine objects and normalized to 0-1 coordinates.
+- Google Cloud Vision runs document OCR with Chinese language hints.
+- Word-level OCR output is grouped into line objects with merged bounding boxes.
+- Bounding boxes are normalized to 0-1 coordinates.
 - Empty lines are dropped.
 - Backend enforces geometric reading order before returning lines:
   - Horizontal text: top-to-bottom, left-to-right.
@@ -41,11 +42,11 @@ Key steps:
 - Chinese content is validated (minimum Chinese characters).
 
 Errors:
-- 503 if vision model is not configured.
+- 503 if Google Cloud Vision is not configured.
 - 422 if insufficient Chinese text is detected.
 
 Files:
-- backend/src/services/ai.ts (OCR prompt, parsing, normalization)
+- backend/src/services/ai.ts (OCR extraction, line grouping, normalization)
 - backend/src/routes/parse.ts (/ocr route)
 - backend/src/config/index.ts (OCR limits)
 

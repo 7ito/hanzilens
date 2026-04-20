@@ -13,11 +13,24 @@ A Chinese language learning tool that breaks down sentences into word segments w
 
 ## Models Used
 - Sentence analysis and parsing: MiMo V2 Flash
-- Image OCR: Gemini 3 Pro
+- Image OCR: Google Cloud Vision
 
 ## Stack
 - **Frontend**: React
 - **Backend**: Express (+ SQLite)
+
+## Configuration
+
+Backend image OCR now uses Google Cloud Vision. Configure one of these:
+
+- `GOOGLE_CLOUD_VISION_API_KEY`
+- `GOOGLE_CLOUD_VISION_CREDENTIALS_JSON`
+- `GOOGLE_APPLICATION_CREDENTIALS` pointing to a service account JSON file
+
+Text parsing still requires:
+
+- `OPENROUTER_API_KEY`
+- `OPENROUTER_MODEL`
 
 ## Project Structure
 ```

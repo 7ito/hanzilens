@@ -1,3 +1,5 @@
+import { GoogleAuth } from 'google-auth-library';
+import { imageSize as getImageSize } from 'image-size';
 import { config } from '../config/index.js';
 import { orderOcrLines } from './ocrOrder.js';
 import { CHINESE_CHAR_REGEX_G } from '../utils/chinese.js';
@@ -9,6 +11,7 @@ const AI_TIMEOUT_MS = 90_000;
 
 // Decoding settings
 const TEMPERATURE = 0.2;
+const GOOGLE_VISION_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 
 const SYSTEM_PROMPT = `You are a Chinese language segmentation assistant. Your task is to break down Chinese sentences into individual words (词语) and provide linguistic information for each, along with alignment to the English translation.
 
@@ -143,26 +146,6 @@ Output:
   ]
 }`;
 
-// Simple OCR-only prompt for vision model (Stage 1 of two-stage pipeline)
-const VISION_OCR_PROMPT = `Extract all text visible in this image and return line-level bounding boxes.
-
-Rules:
-- Include ALL text you can see (Chinese, Latin letters, numbers, punctuation)
-- Preserve natural reading order (top-to-bottom, left-to-right)
-- Keep lines separate (do not merge adjacent lines)
-- Do NOT insert or remove characters; do not correct typos
-- Return bounding boxes normalized to the full image (0-1 values)
-
-Return a JSON object in this exact shape:
-{
-  "imageSize": { "width": <px>, "height": <px> },
-  "lines": [
-    { "id": "l1", "text": "...", "box": { "x": 0.12, "y": 0.24, "w": 0.44, "h": 0.05 } }
-  ]
-}
-
-If no text is found, return: {"lines": []}`;
-
 /**
  * Validate OCR-extracted text has sufficient Chinese content
  */
@@ -180,7 +163,7 @@ function validateOcrLines(lines: OcrLine[]): { valid: boolean; error?: string } 
 }
 
 /**
- * OCR result from vision model
+ * OCR result from image OCR provider
  */
 interface OcrLineBox {
   x: number;
@@ -208,10 +191,62 @@ interface OcrRawLine {
   confidence?: number;
 }
 
-interface OcrRawResult {
-  imageSize?: { width?: number; height?: number };
-  lines?: OcrRawLine[];
+interface GoogleVisionVertex {
+  x?: number;
+  y?: number;
+}
+
+interface GoogleVisionBoundingPoly {
+  vertices?: GoogleVisionVertex[];
+}
+
+interface GoogleVisionDetectedBreak {
+  type?: 'UNKNOWN' | 'SPACE' | 'SURE_SPACE' | 'EOL_SURE_SPACE' | 'HYPHEN' | 'LINE_BREAK';
+}
+
+interface GoogleVisionTextProperty {
+  detectedBreak?: GoogleVisionDetectedBreak;
+}
+
+interface GoogleVisionSymbol {
   text?: string;
+  property?: GoogleVisionTextProperty;
+}
+
+interface GoogleVisionWord {
+  symbols?: GoogleVisionSymbol[];
+  boundingBox?: GoogleVisionBoundingPoly;
+  confidence?: number;
+}
+
+interface GoogleVisionParagraph {
+  words?: GoogleVisionWord[];
+}
+
+interface GoogleVisionBlock {
+  paragraphs?: GoogleVisionParagraph[];
+}
+
+interface GoogleVisionPage {
+  blocks?: GoogleVisionBlock[];
+}
+
+interface GoogleVisionFullTextAnnotation {
+  text?: string;
+  pages?: GoogleVisionPage[];
+}
+
+interface GoogleVisionError {
+  message?: string;
+}
+
+interface GoogleVisionAnnotateImageResponse {
+  error?: GoogleVisionError;
+  fullTextAnnotation?: GoogleVisionFullTextAnnotation;
+}
+
+interface GoogleVisionAnnotateResponse {
+  responses?: GoogleVisionAnnotateImageResponse[];
 }
 
 function clamp01(value: number): number {
@@ -297,17 +332,243 @@ function normalizeOcrLines(rawLines: OcrRawLine[], imageSize?: { width?: number;
   return orderOcrLines(lines).lines;
 }
 
-function parseOcrContent(content: string): OcrRawResult {
-  try {
-    return JSON.parse(content) as OcrRawResult;
-  } catch {
-    const textMatch = content.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-    if (textMatch) {
-      const extractedText = JSON.parse(`"${textMatch[1]}"`);
-      return { text: extractedText };
-    }
-    throw new Error('Could not parse OCR response');
+function hasGoogleVisionCredentials(): boolean {
+  return !!(
+    config.googleVision.apiKey
+    || config.googleVision.credentialsJson
+    || config.googleVision.credentialsPath
+  );
+}
+
+let googleVisionAuth: GoogleAuth | null = null;
+
+function getGoogleVisionAuth(): GoogleAuth {
+  if (googleVisionAuth) {
+    return googleVisionAuth;
   }
+
+  if (config.googleVision.credentialsJson) {
+    let credentials: Record<string, unknown>;
+
+    try {
+      credentials = JSON.parse(config.googleVision.credentialsJson) as Record<string, unknown>;
+    } catch (error) {
+      console.error('Failed to parse GOOGLE_CLOUD_VISION_CREDENTIALS_JSON:', error);
+      throw new Error('AI service not configured');
+    }
+
+    googleVisionAuth = new GoogleAuth({
+      credentials,
+      scopes: [GOOGLE_VISION_SCOPE],
+    });
+
+    return googleVisionAuth;
+  }
+
+  googleVisionAuth = new GoogleAuth({ scopes: [GOOGLE_VISION_SCOPE] });
+  return googleVisionAuth;
+}
+
+function parseImageDataUrl(imageDataUrl: string): { base64: string; buffer: Buffer } {
+  const match = imageDataUrl.match(/^data:[^;]+;base64,(.+)$/);
+  if (!match) {
+    throw new Error('Invalid image format. Expected base64 data URL (e.g., data:image/jpeg;base64,...)');
+  }
+
+  const base64 = match[1];
+  return {
+    base64,
+    buffer: Buffer.from(base64, 'base64'),
+  };
+}
+
+function getImageDimensions(buffer: Buffer): { width: number; height: number } | undefined {
+  const result = getImageSize(buffer);
+  if (!result.width || !result.height) {
+    return undefined;
+  }
+
+  return {
+    width: result.width,
+    height: result.height,
+  };
+}
+
+function normalizeGoogleBoundingPoly(
+  boundingPoly: GoogleVisionBoundingPoly | undefined,
+  imageSize?: { width?: number; height?: number }
+): OcrLineBox {
+  const vertices = boundingPoly?.vertices ?? [];
+  const xs = vertices.map((vertex) => vertex.x ?? 0);
+  const ys = vertices.map((vertex) => vertex.y ?? 0);
+
+  if (xs.length === 0 || ys.length === 0) {
+    return normalizeBox(undefined, imageSize);
+  }
+
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  return normalizeBox(
+    {
+      x: minX,
+      y: minY,
+      w: Math.max(0, maxX - minX),
+      h: Math.max(0, maxY - minY),
+    },
+    imageSize
+  );
+}
+
+function mergeLineBoxes(a: OcrLineBox | null, b: OcrLineBox): OcrLineBox {
+  if (!a) return b;
+
+  const x1 = Math.min(a.x, b.x);
+  const y1 = Math.min(a.y, b.y);
+  const x2 = Math.max(a.x + a.w, b.x + b.w);
+  const y2 = Math.max(a.y + a.h, b.y + b.h);
+
+  return {
+    x: x1,
+    y: y1,
+    w: x2 - x1,
+    h: y2 - y1,
+  };
+}
+
+function getGoogleWordText(word: GoogleVisionWord): string {
+  return (word.symbols ?? [])
+    .map((symbol) => symbol.text ?? '')
+    .join('')
+    .trim();
+}
+
+function getGoogleWordBreakType(word: GoogleVisionWord): GoogleVisionDetectedBreak['type'] | undefined {
+  const symbols = word.symbols ?? [];
+  const lastSymbol = symbols[symbols.length - 1];
+  return lastSymbol?.property?.detectedBreak?.type;
+}
+
+function appendBreakText(text: string, breakType: GoogleVisionDetectedBreak['type'] | undefined): string {
+  if (breakType === 'SPACE' || breakType === 'SURE_SPACE' || breakType === 'EOL_SURE_SPACE') {
+    return `${text} `;
+  }
+
+  if (breakType === 'HYPHEN') {
+    return `${text}-`;
+  }
+
+  return text;
+}
+
+function shouldFlushLine(breakType: GoogleVisionDetectedBreak['type'] | undefined): boolean {
+  return breakType === 'LINE_BREAK' || breakType === 'EOL_SURE_SPACE';
+}
+
+function extractLinesFromGoogleVision(
+  annotation: GoogleVisionAnnotateImageResponse,
+  imageSize?: { width?: number; height?: number }
+): OcrLine[] {
+  const lines: OcrLine[] = [];
+  const pages = annotation.fullTextAnnotation?.pages ?? [];
+
+  let currentText = '';
+  let currentBox: OcrLineBox | null = null;
+  let confidenceSum = 0;
+  let confidenceCount = 0;
+
+  const flushCurrentLine = () => {
+    const text = currentText.trim();
+    if (!text || !currentBox) {
+      currentText = '';
+      currentBox = null;
+      confidenceSum = 0;
+      confidenceCount = 0;
+      return;
+    }
+
+    lines.push({
+      id: `l${lines.length + 1}`,
+      text,
+      box: currentBox,
+      ...(confidenceCount > 0 ? { confidence: confidenceSum / confidenceCount } : {}),
+    });
+
+    currentText = '';
+    currentBox = null;
+    confidenceSum = 0;
+    confidenceCount = 0;
+  };
+
+  for (const page of pages) {
+    for (const block of page.blocks ?? []) {
+      for (const paragraph of block.paragraphs ?? []) {
+        for (const word of paragraph.words ?? []) {
+          const wordText = getGoogleWordText(word);
+          if (!wordText) continue;
+
+          currentText += appendBreakText(wordText, getGoogleWordBreakType(word));
+          currentBox = mergeLineBoxes(
+            currentBox,
+            normalizeGoogleBoundingPoly(word.boundingBox, imageSize)
+          );
+
+          if (Number.isFinite(word.confidence)) {
+            confidenceSum += word.confidence as number;
+            confidenceCount += 1;
+          }
+
+          if (shouldFlushLine(getGoogleWordBreakType(word))) {
+            flushCurrentLine();
+          }
+        }
+
+        flushCurrentLine();
+      }
+    }
+  }
+
+  flushCurrentLine();
+
+  if (lines.length > 0) {
+    return orderOcrLines(lines).lines;
+  }
+
+  const fallbackText = annotation.fullTextAnnotation?.text;
+  if (typeof fallbackText === 'string' && fallbackText.trim()) {
+    const rawLines = fallbackText
+      .split(/\n+/)
+      .map((text, index) => ({ id: `l${index + 1}`, text }));
+
+    return normalizeOcrLines(rawLines, imageSize);
+  }
+
+  return [];
+}
+
+async function getGoogleVisionRequestInit(): Promise<{ url: string; headers: HeadersInit }> {
+  if (config.googleVision.apiKey) {
+    return {
+      url: `${config.googleVision.endpoint}?key=${encodeURIComponent(config.googleVision.apiKey)}`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+  }
+
+  const auth = getGoogleVisionAuth();
+  const client = await auth.getClient();
+  const requestHeaders = await client.getRequestHeaders(config.googleVision.endpoint);
+
+  return {
+    url: config.googleVision.endpoint,
+    headers: {
+      ...requestHeaders,
+      'Content-Type': 'application/json',
+    },
+  };
 }
 
 /**
@@ -318,10 +579,10 @@ export function isConfigured(): boolean {
 }
 
 /**
- * Validate that OpenRouter is configured for vision/image parsing
+ * Validate that OCR is configured for image parsing
  */
 export function isVisionConfigured(): boolean {
-  return !!(config.openrouter.apiKey && config.openrouter.visionModel);
+  return hasGoogleVisionCredentials();
 }
 
 /**
@@ -340,8 +601,9 @@ export function getConfigStatus(): string {
 
 export function getVisionConfigStatus(): string {
   const issues: string[] = [];
-  if (!config.openrouter.apiKey) issues.push('OPENROUTER_API_KEY not set');
-  if (!config.openrouter.visionModel) issues.push('OPENROUTER_VISION_MODEL not set');
+  if (!config.googleVision.apiKey && !config.googleVision.credentialsJson && !config.googleVision.credentialsPath) {
+    issues.push('Google Cloud Vision credentials not set');
+  }
   return issues.length > 0 ? issues.join(', ') : 'configured';
 }
 
@@ -412,58 +674,43 @@ export async function streamParse(sentence: string, context?: string): Promise<R
 }
 
 /**
- * Extract text lines + layout from an image using vision model (OCR only).
- * Non-streaming request for speed.
- * 
+ * Extract text lines + layout from an image using Google Cloud Vision.
+ *
  * @param imageDataUrl - Base64 data URL (e.g., "data:image/jpeg;base64,...")
  * @returns OCR result with lines and normalized boxes
  * @throws Error if OCR fails or validation fails
  */
 async function extractLinesFromImage(imageDataUrl: string): Promise<OcrResult> {
   if (!isVisionConfigured()) {
-    console.error(`OpenRouter vision not configured: ${getVisionConfigStatus()}`);
+    console.error(`Google Cloud Vision not configured: ${getVisionConfigStatus()}`);
     throw new Error('AI service not configured');
   }
 
-  // Set up timeout for the request
+  const { base64, buffer } = parseImageDataUrl(imageDataUrl);
+  const imageSize = getImageDimensions(buffer);
+
+  const requestBody = {
+    requests: [
+      {
+        image: { content: base64 },
+        features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+        imageContext: {
+          languageHints: ['zh', 'zh-Hans', 'zh-Hant'],
+        },
+      },
+    ],
+  };
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${config.openrouter.baseUrl}/chat/completions`, {
+    const { url, headers } = await getGoogleVisionRequestInit();
+
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.openrouter.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://hanzilens.com',
-        'X-Title': 'HanziLens',
-      },
-      body: JSON.stringify({
-        model: config.openrouter.visionModel,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: VISION_OCR_PROMPT,
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: imageDataUrl,
-                },
-              },
-            ],
-          },
-        ],
-        stream: false,
-        response_format: { type: 'json_object' },
-        temperature: TEMPERATURE,
-        provider: {
-          sort: 'throughput',
-        },
-      }),
+      headers,
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
@@ -471,38 +718,23 @@ async function extractLinesFromImage(imageDataUrl: string): Promise<OcrResult> {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error(`OpenRouter Vision API error (${response.status}):`, errorBody);
+      console.error(`Google Cloud Vision API error (${response.status}):`, errorBody);
       throw new Error('AI vision service temporarily unavailable');
     }
 
-    // Parse the response
-    const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content;
-    
-    if (!content) {
-      throw new Error('No content in vision model response');
+    const data = await response.json() as GoogleVisionAnnotateResponse;
+    const annotation = data.responses?.[0];
+
+    if (!annotation) {
+      throw new Error('AI vision service temporarily unavailable');
     }
 
-    // Parse the JSON content from the model
-    let rawResult: OcrRawResult;
-    try {
-      rawResult = parseOcrContent(content);
-    } catch {
-      console.error('Failed to parse OCR JSON response:', content);
-      throw new Error('Could not extract sufficient Chinese text from image');
+    if (annotation.error?.message) {
+      console.error('Google Cloud Vision returned an OCR error:', annotation.error.message);
+      throw new Error('AI vision service temporarily unavailable');
     }
 
-    const rawLines = Array.isArray(rawResult.lines) && rawResult.lines.length > 0
-      ? rawResult.lines
-      : typeof rawResult.text === 'string'
-        ? rawResult.text.split(/\n+/).map((text) => ({ text }))
-        : [];
-
-    const imageSize = rawResult.imageSize?.width && rawResult.imageSize?.height
-      ? { width: rawResult.imageSize.width, height: rawResult.imageSize.height }
-      : undefined;
-
-    const lines = normalizeOcrLines(rawLines, imageSize);
+    const lines = extractLinesFromGoogleVision(annotation, imageSize);
 
     if (lines.length === 0) {
       throw new Error('Could not extract sufficient Chinese text from image');
@@ -525,9 +757,9 @@ async function extractLinesFromImage(imageDataUrl: string): Promise<OcrResult> {
 
 /**
  * Two-stage image parsing:
- * 1. OCR: Extract text lines + layout from image (vision model, non-streaming)
+ * 1. OCR: Extract text lines + layout from image
  * 2. Parse: Segment and analyze text (text model, streaming)
- * 
+ *
  * @param imageDataUrl - Base64 data URL (e.g., "data:image/jpeg;base64,...")
  * @returns Object with streaming response and extracted text (for pinyin correction)
  */
@@ -539,10 +771,10 @@ export async function streamParseImage(imageDataUrl: string): Promise<{
   const ocrResult = await extractLinesFromImage(imageDataUrl);
   const extractedText = ocrResult.lines.map((line) => line.text).join('\n');
   const truncatedText = extractedText.slice(0, config.ocr.maxTextLength);
-  
+
   // Stage 2: Parse - use text model for linguistic analysis
   const response = await streamParse(truncatedText);
-  
+
   return { response, extractedText: truncatedText };
 }
 
@@ -573,10 +805,10 @@ export interface ParseNonStreamingResult {
 
 /**
  * Non-streaming parse for evaluation purposes.
- * 
+ *
  * Allows model override and returns token usage.
  * Used by the /eval/parse endpoint for model evaluation.
- * 
+ *
  * @param sentence - Chinese text to parse
  * @param modelOverride - Optional model ID to use instead of configured model
  * @param providerOverride - Optional provider slug (e.g., 'fireworks', 'together')
@@ -588,12 +820,12 @@ export async function parseNonStreaming(
   providerOverride?: string
 ): Promise<ParseNonStreamingResult> {
   const model = modelOverride || config.openrouter.model;
-  
+
   if (!config.openrouter.apiKey) {
     console.error('parseNonStreaming: OPENROUTER_API_KEY not set');
     throw new Error('AI service not configured');
   }
-  
+
   if (!model) {
     console.error('parseNonStreaming: No model specified and OPENROUTER_MODEL not set');
     throw new Error('AI service not configured');

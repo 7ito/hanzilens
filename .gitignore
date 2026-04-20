@@ -1,5 +1,6 @@
 *.u8
 AGENTS.md
+.codex
 
 # Claude AI session files
 .claude/

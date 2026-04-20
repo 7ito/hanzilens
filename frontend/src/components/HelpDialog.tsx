@@ -138,7 +138,7 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
 						</p>
 
 						<p className="text-sm text-muted-foreground text-center">
-							Note: HanziLens currently uses MiMo V2 Flash to analyze and process Chinese text, and Gemini 3 Pro for OCR. Image bounding boxes can vary in quality right now. As these are LLMs, there can be inaccuracies in the translations/pinyin reading although quite rare at this point. Clicking on any segment allows you to view the MDBG CEDICT entry to verify if something seems off.
+							Note: HanziLens currently uses MiMo V2 Flash to analyze and process Chinese text, and Google Cloud Vision for OCR. Image bounding boxes can vary in quality right now. There can still be occasional OCR, translation, or pinyin mistakes. Clicking on any segment allows you to view the MDBG CEDICT entry to verify if something seems off.
 						</p>
 					</div>
 

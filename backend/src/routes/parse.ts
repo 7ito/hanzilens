@@ -180,7 +180,7 @@ async function streamResponseWithCorrection(
  * Uses AI (OpenRouter) for intelligent segmentation.
  * 
  * For text input: Applies real-time pinyin correction using pinyin-pro
- * For image input: No pinyin correction (OCR text varies)
+ * For image input: Applies pinyin correction to the OCR-extracted text before streaming
  * 
  * Request body: { sentence: string } OR { image: string (base64 data URL) }
  * Response: SSE stream with AI chunks

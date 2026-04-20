@@ -46,9 +46,15 @@ export const config = {
     // - google/gemini-flash-1.5 (fast, cheap)
     // - qwen/qwen-2.5-72b-instruct (good for Chinese)
     model: process.env.OPENROUTER_MODEL || '',
-    // Vision model for image OCR (e.g., openai/gpt-4o, anthropic/claude-sonnet-4)
-    visionModel: process.env.OPENROUTER_VISION_MODEL || '',
     baseUrl: 'https://openrouter.ai/api/v1',
+  },
+
+  // Google Cloud Vision settings for image OCR
+  googleVision: {
+    apiKey: process.env.GOOGLE_CLOUD_VISION_API_KEY || '',
+    credentialsJson: process.env.GOOGLE_CLOUD_VISION_CREDENTIALS_JSON || '',
+    credentialsPath: process.env.GOOGLE_APPLICATION_CREDENTIALS || '',
+    endpoint: 'https://vision.googleapis.com/v1/images:annotate',
   },
 
   // Image upload settings
@@ -85,9 +91,15 @@ export function validateConfig(): void {
     errors.push('OPENROUTER_MODEL is required');
   }
 
-  // Vision model is optional - only warn if not set
-  if (!config.openrouter.visionModel) {
-    console.warn('Note: OPENROUTER_VISION_MODEL not set. Image parsing will be unavailable.');
+  // OCR provider is optional - only warn if not set
+  if (
+    !config.googleVision.apiKey
+    && !config.googleVision.credentialsJson
+    && !config.googleVision.credentialsPath
+  ) {
+    console.warn(
+      'Note: Google Cloud Vision credentials not set. Image parsing will be unavailable.'
+    );
   }
 
   if (errors.length > 0) {

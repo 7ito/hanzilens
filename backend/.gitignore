@@ -7,6 +7,9 @@ dist/
 # Environment variables
 .env
 
+# Local secrets
+.secrets/
+
 # Backup files
 *.backup
 
