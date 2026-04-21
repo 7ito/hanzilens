@@ -58,7 +58,7 @@ export function useImageParse() {
       const result = await startOcr(image, ocrController.signal);
       if (!isSessionActive(sessionId)) return;
 
-      const combinedText = result.lines.map((line) => line.text).join('\n');
+      const combinedText = result.text;
       const parsedSentences = splitCombinedTextIntoSentences(combinedText);
 
       initialize({

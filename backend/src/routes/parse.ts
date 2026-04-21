@@ -35,9 +35,15 @@ function sendImmediateTranslation(res: ExpressResponse, sentence: string): void 
 /**
  * POST /ocr
  *
- * Extract text lines + layout from an image.
+ * Extract canonical OCR text + layout from an image.
  * Request body: { image: string (base64 data URL) }
- * Response: { lines: [{ id, text, box, confidence? }], imageSize? }
+ * Response: {
+ *   imageSize?,
+ *   text,
+ *   readingDirection,
+ *   lines: [{ id, text, startOffset, endOffset, box, wordIds, confidence? }],
+ *   words: [{ id, text, startOffset, endOffset, lineId, box, confidence? }]
+ * }
  */
 router.post('/ocr', parseRateLimit, validateImageInput, async (req: ValidatedRequest, res: ExpressResponse) => {
   try {

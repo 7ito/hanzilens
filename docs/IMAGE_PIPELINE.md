@@ -6,7 +6,7 @@ This document describes the end-to-end image mode flow for HanziLens, from image
 
 Image mode uses a two-step approach:
 
-1) OCR with layout to extract line text + bounding boxes.
+1) OCR with layout to extract canonical text, lines, words, and bounding boxes.
 2) Per-sentence parsing using the regular /parse text endpoint.
 
 The UI preserves the original image layout using colored overlays and renders the parsed sentence details below the image.
@@ -24,15 +24,35 @@ Response body (normalized boxes 0-1):
 ```
 {
   "imageSize": { "width": 1234, "height": 987 },
+  "text": "第一行\n第二行",
+  "readingDirection": "horizontal",
   "lines": [
-    { "id": "l1", "text": "...", "box": { "x": 0.12, "y": 0.24, "w": 0.44, "h": 0.05 } }
+    {
+      "id": "l1",
+      "text": "第一行",
+      "startOffset": 0,
+      "endOffset": 3,
+      "wordIds": ["w1", "w2"],
+      "box": { "x": 0.12, "y": 0.24, "w": 0.44, "h": 0.05 }
+    }
+  ],
+  "words": [
+    {
+      "id": "w1",
+      "text": "第一",
+      "startOffset": 0,
+      "endOffset": 2,
+      "lineId": "l1",
+      "box": { "x": 0.12, "y": 0.24, "w": 0.26, "h": 0.05 }
+    }
   ]
 }
 ```
 
 Key steps:
 - Google Cloud Vision runs document OCR with Chinese language hints.
-- Word-level OCR output is grouped into line objects with merged bounding boxes.
+- Word-level OCR output is grouped into ordered line objects with merged line boxes.
+- Backend builds a canonical `text` string and assigns offsets to both lines and words.
 - Bounding boxes are normalized to 0-1 coordinates.
 - Empty lines are dropped.
 - Backend enforces geometric reading order before returning lines:
@@ -55,22 +75,23 @@ Files:
 Hook: frontend/src/hooks/useImageParse.ts
 
 Steps:
-1) startOcr(image) calls POST /ocr and receives lines + boxes.
-2) Combined text is built by joining line text with '\n'.
-3) Sentence splitter runs on the combined text:
+1) startOcr(image) calls POST /ocr and receives canonical OCR text, lines, and words.
+2) Sentence splitter runs on the returned `text`:
    - Hard breaks: 。！？； plus ASCII ! ? ; and …
    - List markers like 1、2、 start new sentences
    - Repeated punctuation is attached to the previous sentence
    - Punctuation-only chunks are merged into the previous sentence
-4) Sentences are stored with start/end offsets into the combined text.
+3) Sentences are stored with start/end offsets into the combined text.
+4) Sentence overlays are computed from overlapping OCR words, merged per line.
 
 ## Frontend: Overlay Geometry
 
 Component: frontend/src/components/ImageResultsView.tsx
 
 For each sentence:
-- Intersect sentence offsets with line ranges to derive per-line boxes.
-- Each sentence can span multiple boxes (one per line).
+- Intersect sentence offsets with OCR word offsets.
+- Merge overlapping word boxes per line.
+- Each sentence can span multiple boxes (one merged box per line).
 
 Two overlay modes:
 - Original: colored highlights over each sentence box.

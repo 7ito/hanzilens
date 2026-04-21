@@ -19,13 +19,29 @@ export interface OcrBox {
 export interface OcrLine {
   id: string;
   text: string;
+  startOffset: number;
+  endOffset: number;
+  box: OcrBox;
+  wordIds: string[];
+  confidence?: number;
+}
+
+export interface OcrWord {
+  id: string;
+  text: string;
+  startOffset: number;
+  endOffset: number;
+  lineId: string;
   box: OcrBox;
   confidence?: number;
 }
 
 export interface OcrResult {
   imageSize?: { width: number; height: number };
+  text: string;
+  readingDirection: 'horizontal' | 'vertical-rtl';
   lines: OcrLine[];
+  words: OcrWord[];
 }
 
 export interface SentenceChunk {

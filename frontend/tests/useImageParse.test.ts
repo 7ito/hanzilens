@@ -39,15 +39,40 @@ function createDeferred<T>() {
 }
 
 function buildOcrResult(): OcrResult {
-  const lines = ['第一句。', '第二句。', '第三句。', '第四句。', '第五句。', '第六句。'].map((text, index) => ({
-    id: `line-${index + 1}`,
-    text,
-    box: { x: 0.1, y: 0.1 + index * 0.1, w: 0.8, h: 0.08 },
+  const sourceLines = ['第一句。', '第二句。', '第三句。', '第四句。', '第五句。', '第六句。'];
+  const text = sourceLines.join('\n');
+  let cursor = 0;
+
+  const lines = sourceLines.map((lineText, index) => {
+    const startOffset = cursor;
+    const endOffset = startOffset + lineText.length;
+    cursor = endOffset + 1;
+
+    return {
+      id: `line-${index + 1}`,
+      text: lineText,
+      startOffset,
+      endOffset,
+      box: { x: 0.1, y: 0.1 + index * 0.1, w: 0.8, h: 0.08 },
+      wordIds: [`word-${index + 1}`],
+    };
+  });
+
+  const words = lines.map((line, index) => ({
+    id: `word-${index + 1}`,
+    text: line.text,
+    startOffset: line.startOffset,
+    endOffset: line.endOffset,
+    lineId: line.id,
+    box: line.box,
   }));
 
   return {
     imageSize: { width: 1000, height: 1000 },
+    text,
+    readingDirection: 'horizontal',
     lines,
+    words,
   };
 }
 

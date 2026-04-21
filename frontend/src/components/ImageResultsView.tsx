@@ -9,7 +9,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { generateHighlightColors } from '@/lib/colors';
 import { setAlpha } from '@/lib/style-utils';
 import { fitTranslationToBoxes, sortBoxesForReading } from '@/lib/textFit';
-import { buildLineRanges, computeSentenceBoxes } from '@/lib/ocrLayout';
+import { computeSentenceBoxes } from '@/lib/ocrLayout';
 import type {
   OcrBox,
   OcrResult,
@@ -61,8 +61,7 @@ export function ImageResultsView({
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
 
-  const lines = ocrResult?.lines ?? [];
-  const lineRanges = useMemo(() => buildLineRanges(lines), [lines]);
+  const words = ocrResult?.words ?? [];
   const isDark = useIsDarkTheme();
   const sentenceColors = useMemo(
     () => generateHighlightColors(sentences.length, isDark),
@@ -80,10 +79,10 @@ export function ImageResultsView({
   const sentenceOverlays = useMemo(() => {
     const map = new Map<string, OcrBox[]>();
     sentences.forEach((sentence) => {
-      map.set(sentence.id, computeSentenceBoxes(sentence, lineRanges));
+      map.set(sentence.id, computeSentenceBoxes(sentence, words));
     });
     return map;
-  }, [sentences, lineRanges]);
+  }, [sentences, words]);
 
   const openSentenceSet = useMemo(() => new Set(openSentenceIds), [openSentenceIds]);
 

@@ -1,7 +1,7 @@
 import { GoogleAuth } from 'google-auth-library';
 import { imageSize as getImageSize } from 'image-size';
 import { config } from '../config/index.js';
-import { orderOcrLines } from './ocrOrder.js';
+import { orderOcrLines, type OcrReadingDirection } from './ocrOrder.js';
 import { CHINESE_CHAR_REGEX_G } from '../utils/chinese.js';
 import { ParseResponseSchema, type ValidatedParseResponse } from '../schemas/parse.js';
 import { ZodError } from 'zod';
@@ -175,19 +175,51 @@ interface OcrLineBox {
 interface OcrLine {
   id: string;
   text: string;
+  startOffset: number;
+  endOffset: number;
+  box: OcrLineBox;
+  wordIds: string[];
+  confidence?: number;
+}
+
+interface OcrWord {
+  id: string;
+  text: string;
+  startOffset: number;
+  endOffset: number;
+  lineId: string;
   box: OcrLineBox;
   confidence?: number;
 }
 
 interface OcrResult {
   imageSize?: { width: number; height: number };
+  text: string;
+  readingDirection: OcrReadingDirection;
   lines: OcrLine[];
+  words: OcrWord[];
 }
 
 interface OcrRawLine {
   id?: string | number;
   text?: string;
   box?: Partial<OcrLineBox>;
+  confidence?: number;
+}
+
+interface OcrWordCandidate {
+  id: string;
+  text: string;
+  trailingText: string;
+  box: OcrLineBox;
+  confidence?: number;
+}
+
+interface OcrLineCandidate {
+  id: string;
+  text: string;
+  box: OcrLineBox;
+  words: OcrWordCandidate[];
   confidence?: number;
 }
 
@@ -307,10 +339,112 @@ function buildFallbackBoxes(count: number): OcrLineBox[] {
   }));
 }
 
-function normalizeOcrLines(rawLines: OcrRawLine[], imageSize?: { width?: number; height?: number }): OcrLine[] {
+function trailingTextFromBreakType(breakType: GoogleVisionDetectedBreak['type'] | undefined): string {
+  if (breakType === 'SPACE' || breakType === 'SURE_SPACE' || breakType === 'EOL_SURE_SPACE') {
+    return ' ';
+  }
+
+  if (breakType === 'HYPHEN') {
+    return '-';
+  }
+
+  return '';
+}
+
+function normalizeTrailingText(trailingText: string, isLastWord: boolean): string {
+  if (!trailingText) return '';
+  if (isLastWord && /^\s+$/.test(trailingText)) return '';
+  return trailingText;
+}
+
+function buildLineText(words: OcrWordCandidate[]): string {
+  return words
+    .map((word, index) => word.text + normalizeTrailingText(word.trailingText, index === words.length - 1))
+    .join('');
+}
+
+function buildOcrResultFromLineCandidates(
+  lineCandidates: OcrLineCandidate[],
+  imageSize?: { width?: number; height?: number }
+): OcrResult {
+  const ordered = orderOcrLines(lineCandidates);
+  const orderedLineCandidates = ordered.lines.filter(
+    (lineCandidate) => lineCandidate.words.length > 0 && buildLineText(lineCandidate.words).trim().length > 0
+  );
+  const lines: OcrLine[] = [];
+  const words: OcrWord[] = [];
+  const textParts: string[] = [];
+  let cursor = 0;
+
+  orderedLineCandidates.forEach((lineCandidate, lineIndex) => {
+    const lineText = buildLineText(lineCandidate.words);
+
+    const lineStartOffset = cursor;
+    const wordIds: string[] = [];
+    let lineCursor = 0;
+
+    lineCandidate.words.forEach((wordCandidate, wordIndex) => {
+      const startOffset = lineStartOffset + lineCursor;
+      const endOffset = startOffset + wordCandidate.text.length;
+      const wordId = wordCandidate.id;
+
+      words.push({
+        id: wordId,
+        text: wordCandidate.text,
+        startOffset,
+        endOffset,
+        lineId: lineCandidate.id,
+        box: wordCandidate.box,
+        ...(wordCandidate.confidence !== undefined ? { confidence: wordCandidate.confidence } : {}),
+      });
+
+      wordIds.push(wordId);
+      lineCursor += wordCandidate.text.length;
+      lineCursor += normalizeTrailingText(
+        wordCandidate.trailingText,
+        wordIndex === lineCandidate.words.length - 1
+      ).length;
+    });
+
+    const endOffset = lineStartOffset + lineText.length;
+
+    lines.push({
+      id: lineCandidate.id,
+      text: lineText,
+      startOffset: lineStartOffset,
+      endOffset,
+      box: normalizeBox(lineCandidate.box, imageSize),
+      wordIds,
+      ...(lineCandidate.confidence !== undefined ? { confidence: lineCandidate.confidence } : {}),
+    });
+
+    textParts.push(lineText);
+    cursor = endOffset;
+
+    if (lineIndex < orderedLineCandidates.length - 1) {
+      textParts.push('\n');
+      cursor += 1;
+    }
+  });
+
+  return {
+    imageSize: imageSize?.width && imageSize?.height
+      ? { width: imageSize.width, height: imageSize.height }
+      : undefined,
+    text: textParts.join(''),
+    readingDirection: ordered.direction,
+    lines,
+    words,
+  };
+}
+
+function normalizeOcrLines(
+  rawLines: OcrRawLine[],
+  imageSize?: { width?: number; height?: number }
+): OcrResult {
   const fallbackBoxes = buildFallbackBoxes(rawLines.length || 1);
 
-  const lines: OcrLine[] = [];
+  const lines: OcrLineCandidate[] = [];
 
   rawLines.forEach((rawLine, index) => {
     const text = (rawLine.text || '').trim();
@@ -319,17 +453,26 @@ function normalizeOcrLines(rawLines: OcrRawLine[], imageSize?: { width?: number;
     const id = rawLine.id ? String(rawLine.id) : `line-${index + 1}`;
     const box = normalizeBox(rawLine.box ?? fallbackBoxes[index], imageSize);
 
-    const line: OcrLine = {
+    const line: OcrLineCandidate = {
       id,
       text,
       box,
+      words: [
+        {
+          id: `${id}-word-1`,
+          text,
+          trailingText: '',
+          box,
+          ...(rawLine.confidence !== undefined ? { confidence: rawLine.confidence } : {}),
+        },
+      ],
       ...(rawLine.confidence !== undefined ? { confidence: rawLine.confidence } : {}),
     };
 
     lines.push(line);
   });
 
-  return orderOcrLines(lines).lines;
+  return buildOcrResultFromLineCandidates(lines, imageSize);
 }
 
 function hasGoogleVisionCredentials(): boolean {
@@ -451,18 +594,6 @@ function getGoogleWordBreakType(word: GoogleVisionWord): GoogleVisionDetectedBre
   return lastSymbol?.property?.detectedBreak?.type;
 }
 
-function appendBreakText(text: string, breakType: GoogleVisionDetectedBreak['type'] | undefined): string {
-  if (breakType === 'SPACE' || breakType === 'SURE_SPACE' || breakType === 'EOL_SURE_SPACE') {
-    return `${text} `;
-  }
-
-  if (breakType === 'HYPHEN') {
-    return `${text}-`;
-  }
-
-  return text;
-}
-
 function shouldFlushLine(breakType: GoogleVisionDetectedBreak['type'] | undefined): boolean {
   return breakType === 'LINE_BREAK' || breakType === 'EOL_SURE_SPACE';
 }
@@ -470,19 +601,21 @@ function shouldFlushLine(breakType: GoogleVisionDetectedBreak['type'] | undefine
 function extractLinesFromGoogleVision(
   annotation: GoogleVisionAnnotateImageResponse,
   imageSize?: { width?: number; height?: number }
-): OcrLine[] {
-  const lines: OcrLine[] = [];
+): OcrResult {
+  const lines: OcrLineCandidate[] = [];
   const pages = annotation.fullTextAnnotation?.pages ?? [];
 
-  let currentText = '';
+  let currentWords: OcrWordCandidate[] = [];
   let currentBox: OcrLineBox | null = null;
   let confidenceSum = 0;
   let confidenceCount = 0;
+  let lineCounter = 0;
+  let wordCounter = 0;
 
   const flushCurrentLine = () => {
-    const text = currentText.trim();
-    if (!text || !currentBox) {
-      currentText = '';
+    const text = buildLineText(currentWords);
+    if (!text.trim() || !currentBox || currentWords.length === 0) {
+      currentWords = [];
       currentBox = null;
       confidenceSum = 0;
       confidenceCount = 0;
@@ -490,13 +623,14 @@ function extractLinesFromGoogleVision(
     }
 
     lines.push({
-      id: `l${lines.length + 1}`,
+      id: `l${++lineCounter}`,
       text,
       box: currentBox,
+      words: currentWords,
       ...(confidenceCount > 0 ? { confidence: confidenceSum / confidenceCount } : {}),
     });
 
-    currentText = '';
+    currentWords = [];
     currentBox = null;
     confidenceSum = 0;
     confidenceCount = 0;
@@ -509,10 +643,20 @@ function extractLinesFromGoogleVision(
           const wordText = getGoogleWordText(word);
           if (!wordText) continue;
 
-          currentText += appendBreakText(wordText, getGoogleWordBreakType(word));
+          const breakType = getGoogleWordBreakType(word);
+          const normalizedBox = normalizeGoogleBoundingPoly(word.boundingBox, imageSize);
+
+          currentWords.push({
+            id: `w${++wordCounter}`,
+            text: wordText,
+            trailingText: trailingTextFromBreakType(breakType),
+            box: normalizedBox,
+            ...(Number.isFinite(word.confidence) ? { confidence: word.confidence as number } : {}),
+          });
+
           currentBox = mergeLineBoxes(
             currentBox,
-            normalizeGoogleBoundingPoly(word.boundingBox, imageSize)
+            normalizedBox
           );
 
           if (Number.isFinite(word.confidence)) {
@@ -520,7 +664,7 @@ function extractLinesFromGoogleVision(
             confidenceCount += 1;
           }
 
-          if (shouldFlushLine(getGoogleWordBreakType(word))) {
+          if (shouldFlushLine(breakType)) {
             flushCurrentLine();
           }
         }
@@ -533,7 +677,7 @@ function extractLinesFromGoogleVision(
   flushCurrentLine();
 
   if (lines.length > 0) {
-    return orderOcrLines(lines).lines;
+    return buildOcrResultFromLineCandidates(lines, imageSize);
   }
 
   const fallbackText = annotation.fullTextAnnotation?.text;
@@ -545,7 +689,15 @@ function extractLinesFromGoogleVision(
     return normalizeOcrLines(rawLines, imageSize);
   }
 
-  return [];
+  return {
+    imageSize: imageSize?.width && imageSize?.height
+      ? { width: imageSize.width, height: imageSize.height }
+      : undefined,
+    text: '',
+    readingDirection: 'horizontal',
+    lines: [],
+    words: [],
+  };
 }
 
 async function getGoogleVisionRequestInit(): Promise<{ url: string; headers: HeadersInit }> {
@@ -674,10 +826,10 @@ export async function streamParse(sentence: string, context?: string): Promise<R
 }
 
 /**
- * Extract text lines + layout from an image using Google Cloud Vision.
+ * Extract text + layout from an image using Google Cloud Vision.
  *
  * @param imageDataUrl - Base64 data URL (e.g., "data:image/jpeg;base64,...")
- * @returns OCR result with lines and normalized boxes
+ * @returns OCR result with canonical text, lines, words, and normalized boxes
  * @throws Error if OCR fails or validation fails
  */
 async function extractLinesFromImage(imageDataUrl: string): Promise<OcrResult> {
@@ -734,18 +886,18 @@ async function extractLinesFromImage(imageDataUrl: string): Promise<OcrResult> {
       throw new Error('AI vision service temporarily unavailable');
     }
 
-    const lines = extractLinesFromGoogleVision(annotation, imageSize);
+    const ocrResult = extractLinesFromGoogleVision(annotation, imageSize);
 
-    if (lines.length === 0) {
+    if (ocrResult.lines.length === 0 || !ocrResult.text.trim()) {
       throw new Error('Could not extract sufficient Chinese text from image');
     }
 
-    const validation = validateOcrLines(lines);
+    const validation = validateOcrLines(ocrResult.lines);
     if (!validation.valid) {
       throw new Error(validation.error || 'Could not extract sufficient Chinese text from image');
     }
 
-    return { imageSize, lines };
+    return ocrResult;
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
@@ -767,9 +919,9 @@ export async function streamParseImage(imageDataUrl: string): Promise<{
   response: Response;
   extractedText: string;
 }> {
-  // Stage 1: OCR - extract text lines from image
+  // Stage 1: OCR - extract canonical text + layout from image
   const ocrResult = await extractLinesFromImage(imageDataUrl);
-  const extractedText = ocrResult.lines.map((line) => line.text).join('\n');
+  const extractedText = ocrResult.text;
   const truncatedText = extractedText.slice(0, config.ocr.maxTextLength);
 
   // Stage 2: Parse - use text model for linguistic analysis
