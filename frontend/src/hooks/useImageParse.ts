@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { startOcr } from '@/lib/api';
 import { useSentenceParseQueue } from '@/hooks/useSentenceParseQueue';
 import { isAbortError } from '@/lib/abort';
-import { splitCombinedTextIntoSentences } from '@/lib/sentenceSplit';
+import { splitOcrResultIntoSentences } from '@/lib/sentenceSplit';
 import type { OcrResult } from '@/types';
 
 interface ImageParseState {
@@ -59,7 +59,7 @@ export function useImageParse() {
       if (!isSessionActive(sessionId)) return;
 
       const combinedText = result.text;
-      const parsedSentences = splitCombinedTextIntoSentences(combinedText);
+      const parsedSentences = splitOcrResultIntoSentences(result);
 
       initialize({
         combinedText,

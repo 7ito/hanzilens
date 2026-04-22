@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { splitCombinedTextIntoSentences } from '@/lib/sentenceSplit';
+import { splitCombinedTextIntoSentences, splitOcrResultIntoSentences } from '@/lib/sentenceSplit';
+import type { OcrResult } from '@/types';
 
 describe('splitCombinedTextIntoSentences', () => {
   it('returns empty array for empty string', () => {
@@ -145,5 +146,95 @@ describe('splitCombinedTextIntoSentences', () => {
   it('handles whitespace-only input', () => {
     const result = splitCombinedTextIntoSentences('   ');
     expect(result).toEqual([]);
+  });
+});
+
+describe('splitOcrResultIntoSentences', () => {
+  it('splits short standalone OCR lines before a wide prose block', () => {
+    const line1 = '文字识别';
+    const line2 = '视频介绍';
+    const line3 = '多场景、多语种、高精度的文字检测与识别服务，多项ICDAR指标居世界第一；';
+    const text = `${line1}\n${line2}\n${line3}`;
+
+    const ocrResult: OcrResult = {
+      imageSize: { width: 1200, height: 800 },
+      readingDirection: 'horizontal',
+      text,
+      lines: [
+        {
+          id: 'l1',
+          text: line1,
+          startOffset: 0,
+          endOffset: line1.length,
+          wordIds: ['w1'],
+          box: { x: 0.05, y: 0.08, w: 0.28, h: 0.08 },
+        },
+        {
+          id: 'l2',
+          text: line2,
+          startOffset: line1.length + 1,
+          endOffset: line1.length + 1 + line2.length,
+          wordIds: ['w2'],
+          box: { x: 0.37, y: 0.08, w: 0.18, h: 0.05 },
+        },
+        {
+          id: 'l3',
+          text: line3,
+          startOffset: line1.length + line2.length + 2,
+          endOffset: text.length,
+          wordIds: ['w3'],
+          box: { x: 0.05, y: 0.22, w: 0.82, h: 0.06 },
+        },
+      ],
+      words: [
+        { id: 'w1', text: line1, startOffset: 0, endOffset: line1.length, lineId: 'l1', box: { x: 0.05, y: 0.08, w: 0.28, h: 0.08 } },
+        { id: 'w2', text: line2, startOffset: line1.length + 1, endOffset: line1.length + 1 + line2.length, lineId: 'l2', box: { x: 0.37, y: 0.08, w: 0.18, h: 0.05 } },
+        { id: 'w3', text: line3, startOffset: line1.length + line2.length + 2, endOffset: text.length, lineId: 'l3', box: { x: 0.05, y: 0.22, w: 0.82, h: 0.06 } },
+      ],
+    };
+
+    expect(splitOcrResultIntoSentences(ocrResult).map((chunk) => chunk.text)).toEqual([
+      '文字识别',
+      '视频介绍',
+      '多场景、多语种、高精度的文字检测与识别服务，多项ICDAR指标居世界第一；',
+    ]);
+  });
+
+  it('keeps wrapped prose lines together when line widths are similar', () => {
+    const line1 = '多场景、多语种、高精度的文字检测与识别服务';
+    const line2 = '多项ICDAR指标居世界第一；';
+    const text = `${line1}\n${line2}`;
+
+    const ocrResult: OcrResult = {
+      imageSize: { width: 1200, height: 800 },
+      readingDirection: 'horizontal',
+      text,
+      lines: [
+        {
+          id: 'l1',
+          text: line1,
+          startOffset: 0,
+          endOffset: line1.length,
+          wordIds: ['w1'],
+          box: { x: 0.05, y: 0.22, w: 0.8, h: 0.06 },
+        },
+        {
+          id: 'l2',
+          text: line2,
+          startOffset: line1.length + 1,
+          endOffset: text.length,
+          wordIds: ['w2'],
+          box: { x: 0.05, y: 0.29, w: 0.78, h: 0.06 },
+        },
+      ],
+      words: [
+        { id: 'w1', text: line1, startOffset: 0, endOffset: line1.length, lineId: 'l1', box: { x: 0.05, y: 0.22, w: 0.8, h: 0.06 } },
+        { id: 'w2', text: line2, startOffset: line1.length + 1, endOffset: text.length, lineId: 'l2', box: { x: 0.05, y: 0.29, w: 0.78, h: 0.06 } },
+      ],
+    };
+
+    expect(splitOcrResultIntoSentences(ocrResult).map((chunk) => chunk.text)).toEqual([
+      '多场景、多语种、高精度的文字检测与识别服务 多项ICDAR指标居世界第一；',
+    ]);
   });
 });

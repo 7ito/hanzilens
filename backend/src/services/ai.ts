@@ -845,7 +845,7 @@ async function extractLinesFromImage(imageDataUrl: string): Promise<OcrResult> {
     requests: [
       {
         image: { content: base64 },
-        features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+        features: [{ type: 'TEXT_DETECTION' }],
         imageContext: {
           languageHints: ['zh', 'zh-Hans', 'zh-Hant'],
         },
