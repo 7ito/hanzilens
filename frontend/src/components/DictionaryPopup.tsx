@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Draggable from 'react-draggable';
-import { X, BookText } from 'lucide-react';
+import { X, BookText, Clipboard, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { DictionaryView } from './DictionaryView';
@@ -20,7 +20,14 @@ export function DictionaryPopup({ token, onClose, initialPosition }: DictionaryP
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [zIndex, setZIndex] = useState(() => getNextZIndex());
+  const [copied, setCopied] = useState(false);
   const nodeRef = useRef<HTMLDivElement>(null);
+
+  const copyToken = () => {
+    navigator.clipboard.writeText(token);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +84,15 @@ export function DictionaryPopup({ token, onClose, initialPosition }: DictionaryP
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-medium">{token}</CardTitle>
               <div className="flex items-center gap-1">
+                {/* Copy button */}
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={copyToken}
+                  title="Copy characters"
+                >
+                  {copied ? <Check className="size-3.5" /> : <Clipboard className="size-3.5" />}
+                </Button>
                 {/* MDBG Link */}
                 <Button
                   variant="ghost"

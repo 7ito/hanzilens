@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, BookText } from 'lucide-react';
+import { ArrowLeft, BookText, Clipboard, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DictionaryView } from './DictionaryView';
 import { lookupDefinition } from '@/lib/api';
@@ -29,6 +29,14 @@ export function MobileDictionaryModal({ segment, onClose }: MobileDictionaryModa
   const [data, setData] = useState<LookupResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const copyToken = () => {
+    if (!segment) return;
+    navigator.clipboard.writeText(segment.token);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   // Fetch dictionary data when segment changes
   useEffect(() => {
@@ -96,21 +104,32 @@ export function MobileDictionaryModal({ segment, onClose }: MobileDictionaryModa
           Back
         </Button>
         <h2 id="dictionary-modal-title" className="font-semibold">Dictionary</h2>
-        {/* MDBG Link */}
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
-        >
-          <a
-            href={`https://www.mdbg.net/chinese/dictionary?wdqb=${encodeURIComponent(token)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="View on MDBG"
+        <div className="flex items-center gap-1">
+          {/* Copy button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={copyToken}
+            title="Copy characters"
           >
-            <BookText className="size-4" />
-          </a>
-        </Button>
+            {copied ? <Check className="size-4" /> : <Clipboard className="size-4" />}
+          </Button>
+          {/* MDBG Link */}
+          <Button
+            variant="ghost"
+            size="sm"
+            asChild
+          >
+            <a
+              href={`https://www.mdbg.net/chinese/dictionary?wdqb=${encodeURIComponent(token)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="View on MDBG"
+            >
+              <BookText className="size-4" />
+            </a>
+          </Button>
+        </div>
       </div>
 
       {/* Hero section - large character display */}

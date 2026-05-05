@@ -1,5 +1,7 @@
-import { Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { Loader2, Clipboard, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { convertPinyin, getToneColor } from '@/lib/pinyin';
 import type { DictionaryEntry, LookupResponse } from '@/types';
 
@@ -8,11 +10,29 @@ import type { DictionaryEntry, LookupResponse } from '@/types';
  */
 function DictionaryEntryItem({ entry }: { entry: DictionaryEntry }) {
   const converted = convertPinyin(entry.pinyin);
+  const [copied, setCopied] = useState(false);
+
+  const copyCharacters = () => {
+    navigator.clipboard.writeText(entry.simplified);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   return (
-    <div className="py-3 border-b border-border last:border-b-0">
+    <div className="py-3 border-b border-border last:border-b-0 relative">
+      {/* Copy button */}
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        className="absolute top-2 right-0"
+        onClick={copyCharacters}
+        title="Copy characters"
+      >
+        {copied ? <Check className="size-3" /> : <Clipboard className="size-3" />}
+      </Button>
+
       {/* Header: Characters + Pinyin */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap pr-6">
         {/* Simplified/Traditional */}
         <span className="text-lg font-medium">
           {entry.simplified === entry.traditional ? (
