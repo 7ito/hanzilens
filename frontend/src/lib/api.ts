@@ -6,6 +6,28 @@ import { hasChinese } from '@/lib/chinese';
 import type { LookupResponse, OcrResult, ParseInput } from '@/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const CLIENT_ID_STORAGE_KEY = 'hanzilens-client-id';
+
+function getClientId(): string {
+  try {
+    const existing = window.localStorage.getItem(CLIENT_ID_STORAGE_KEY);
+    if (existing) return existing;
+
+    const next = crypto.randomUUID();
+    window.localStorage.setItem(CLIENT_ID_STORAGE_KEY, next);
+    return next;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
+function getClientHeaders(): Record<string, string> {
+  return {
+    'X-HanziLens-Client': 'web',
+    'X-HanziLens-Client-Id': getClientId(),
+    'X-HanziLens-Client-Version': 'web',
+  };
+}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -63,6 +85,7 @@ export async function lookupDefinition(token: string, signal?: AbortSignal): Pro
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getClientHeaders(),
     },
     body: JSON.stringify({ token }),
     signal,
@@ -89,6 +112,7 @@ export async function startParse(input: ParseInput, signal?: AbortSignal): Promi
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getClientHeaders(),
     },
     body: JSON.stringify(body),
     signal,
@@ -110,6 +134,7 @@ export async function startOcr(image: string, signal?: AbortSignal): Promise<Ocr
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getClientHeaders(),
     },
     body: JSON.stringify({ image }),
     signal,

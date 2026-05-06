@@ -137,4 +137,4 @@ Files:
 
 ## Rate Limiting
 
-The /parse endpoint is rate-limited (30 req/min/IP). Image mode can issue multiple sentence parses, so concurrency is capped to limit load.
+The /ocr endpoint has its own OCR-specific client, IP, and global fixed-window limits. Defaults are 3/minute, 20/hour, 30/day per client, 10/minute, 100/hour, 300/day per IP, and 500/day globally. Image mode can issue multiple sentence parses after OCR, so parse concurrency is capped and parse requests also use the /parse limits.

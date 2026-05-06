@@ -5,6 +5,7 @@ import { config, validateConfig } from './config/index.js';
 import dictionaryRouter from './routes/dictionary.js';
 import parseRouter from './routes/parse.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { rateLimitClientHeaders } from './middleware/rateLimit.js';
 
 // Validate required configuration on startup
 validateConfig();
@@ -31,7 +32,7 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 app.use(cors({
   origin: config.corsOrigins,
   methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type'],
+  allowedHeaders: ['Content-Type', ...rateLimitClientHeaders],
 }));
 
 // Body parser with size limit (10MB to accommodate base64 images)

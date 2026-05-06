@@ -45,7 +45,11 @@ Validation:
 - If no Chinese characters are present, the server returns an immediate translation echo with empty segments.
 
 Rate limiting:
-- parseRateLimit allows 30 requests per minute per IP.
+- /parse uses separate client, IP, and global fixed-window limits.
+- Default client limits: 30/minute, 180/hour, 500/day.
+- Default IP limits: 60/minute, 1000/hour, 3000/day.
+- Default global cap: 5000/day.
+- Client identity is supplied with X-HanziLens-Client-Id when available. IP and global caps still apply.
 
 Parsing:
 - streamParse sends the system prompt + optional context + target sentence to OpenRouter.

@@ -7,7 +7,7 @@ import {
   isVisionConfigured,
 } from '../services/ai.js';
 import { validateParseInput, validateImageInput, ValidatedRequest } from '../middleware/validation.js';
-import { parseRateLimit } from '../middleware/rateLimit.js';
+import { imageParseRateLimit, ocrRateLimit, parseRateLimit } from '../middleware/rateLimit.js';
 import { HttpError } from '../middleware/errorHandler.js';
 import { buildPinyinMap, type PinyinMap } from '../services/pinyinCorrection.js';
 import { createStreamState, processStreamBuffer, extractDeltaContent } from '../services/streamProcessor.js';
@@ -45,7 +45,7 @@ function sendImmediateTranslation(res: ExpressResponse, sentence: string): void 
  *   words: [{ id, text, startOffset, endOffset, lineId, box, confidence? }]
  * }
  */
-router.post('/ocr', parseRateLimit, validateImageInput, async (req: ValidatedRequest, res: ExpressResponse) => {
+router.post('/ocr', ocrRateLimit, validateImageInput, async (req: ValidatedRequest, res: ExpressResponse) => {
   try {
     if (!isVisionConfigured()) {
       throw new HttpError(503, 'AI service not configured');
@@ -195,7 +195,7 @@ async function streamResponseWithCorrection(
  * - data: {"choices":[{"delta":{"content":"..."}}]}
  * - data: [DONE]
  */
-router.post('/parse', parseRateLimit, validateParseInput, async (req: ValidatedRequest, res: ExpressResponse) => {
+router.post('/parse', imageParseRateLimit, parseRateLimit, validateParseInput, async (req: ValidatedRequest, res: ExpressResponse) => {
   const isImageInput = !!req.validatedImage;
 
   try {
