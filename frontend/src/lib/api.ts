@@ -21,11 +21,18 @@ function getClientId(): string {
   }
 }
 
-function getClientHeaders(): Record<string, string> {
+export type ApiFeature =
+  | 'web_text_parse'
+  | 'web_image_ocr'
+  | 'web_image_sentence_parse'
+  | 'web_lookup';
+
+function getClientHeaders(feature: ApiFeature): Record<string, string> {
   return {
     'X-HanziLens-Client': 'web',
     'X-HanziLens-Client-Id': getClientId(),
     'X-HanziLens-Client-Version': 'web',
+    'X-HanziLens-Feature': feature,
   };
 }
 
@@ -85,7 +92,7 @@ export async function lookupDefinition(token: string, signal?: AbortSignal): Pro
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...getClientHeaders(),
+      ...getClientHeaders('web_lookup'),
     },
     body: JSON.stringify({ token }),
     signal,
@@ -103,7 +110,11 @@ export async function lookupDefinition(token: string, signal?: AbortSignal): Pro
  * Accepts either text input or image input (base64 data URL).
  * The caller is responsible for reading the SSE stream.
  */
-export async function startParse(input: ParseInput, signal?: AbortSignal): Promise<Response> {
+export async function startParse(
+  input: ParseInput,
+  signal?: AbortSignal,
+  feature: ApiFeature = input.type === 'text' ? 'web_text_parse' : 'web_image_sentence_parse'
+): Promise<Response> {
   const body = input.type === 'text' 
     ? { sentence: input.sentence, ...(input.context ? { context: input.context } : {}) }
     : { image: input.image };
@@ -112,7 +123,7 @@ export async function startParse(input: ParseInput, signal?: AbortSignal): Promi
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...getClientHeaders(),
+      ...getClientHeaders(feature),
     },
     body: JSON.stringify(body),
     signal,
@@ -134,7 +145,7 @@ export async function startOcr(image: string, signal?: AbortSignal): Promise<Ocr
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...getClientHeaders(),
+      ...getClientHeaders('web_image_ocr'),
     },
     body: JSON.stringify({ image }),
     signal,

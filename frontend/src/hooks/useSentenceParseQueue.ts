@@ -221,7 +221,8 @@ export function useSentenceParseQueue(): UseSentenceParseQueueResult {
         try {
           const response = await startParse(
             { type: 'text', sentence: sentence.text, context },
-            controller.signal
+            controller.signal,
+            'web_image_sentence_parse'
           );
           result = await parseSseResponse(response, {
             signal: controller.signal,
