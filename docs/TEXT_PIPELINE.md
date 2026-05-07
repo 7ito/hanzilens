@@ -45,10 +45,12 @@ Validation:
 - If no Chinese characters are present, the server returns an immediate translation echo with empty segments.
 
 Rate limiting:
-- /parse uses separate client, IP, and global fixed-window limits.
-- Default client limits: 30/minute, 180/hour, 500/day.
-- Default IP limits: 60/minute, 1000/hour, 3000/day.
+- /parse uses a pre-validation IP abuse throttle, then billable client, IP, and global fixed-window limits after validation.
+- Non-Chinese text responses do not consume billable parse quota because they do not call OpenRouter.
+- Default billable client limits: 30/minute, 180/hour, 500/day.
+- Default billable IP limits: 60/minute, 1000/hour, 3000/day.
 - Default global cap: 5000/day.
+- RATE_LIMIT_USAGE_MULTIPLIER scales all nonzero limits globally.
 - Client identity is supplied with X-HanziLens-Client-Id when available. IP and global caps still apply.
 
 Parsing:

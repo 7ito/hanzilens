@@ -11,6 +11,7 @@ const PREFETCH_AFTER_OPEN_COUNT = 2;
 const MAX_PARSE_RETRIES = 2;
 const BASE_RETRY_DELAY_MS = 450;
 const MAX_RETRY_DELAY_MS = 5000;
+const MAX_RETRYABLE_RETRY_AFTER_MS = 30_000;
 
 interface SentenceParseQueueState {
   openSentenceIds: string[];
@@ -42,7 +43,11 @@ const initialState: SentenceParseQueueState = {
 };
 
 function shouldRetry(error: unknown): error is ApiError {
-  return error instanceof ApiError && error.status === 429;
+  if (!(error instanceof ApiError) || error.status !== 429) return false;
+  if (typeof error.retryAfterMs === 'number' && error.retryAfterMs > MAX_RETRYABLE_RETRY_AFTER_MS) {
+    return false;
+  }
+  return true;
 }
 
 function getRetryDelayMs(attempt: number, retryAfterMs?: number): number {

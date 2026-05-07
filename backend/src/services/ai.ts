@@ -4,6 +4,7 @@ import { config } from '../config/index.js';
 import { orderOcrLines, type OcrReadingDirection } from './ocrOrder.js';
 import { CHINESE_CHAR_REGEX_G } from '../utils/chinese.js';
 import { ParseResponseSchema, type ValidatedParseResponse } from '../schemas/parse.js';
+import { captureAnalytics, getAnalyticsContext } from './analytics.js';
 import { ZodError } from 'zod';
 
 // Request timeout for AI calls (90 seconds)
@@ -12,6 +13,7 @@ const AI_TIMEOUT_MS = 90_000;
 // Decoding settings
 const TEMPERATURE = 0.2;
 const GOOGLE_VISION_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
+const GOOGLE_VISION_OCR_COST_PER_UNIT = 0.0015;
 
 const SYSTEM_PROMPT = `You are a Chinese language segmentation assistant. Your task is to break down Chinese sentences into individual words (词语) and provide linguistic information for each, along with alignment to the English translation.
 
@@ -160,6 +162,118 @@ function validateOcrText(text: string): { valid: boolean; error?: string } {
 function validateOcrLines(lines: OcrLine[]): { valid: boolean; error?: string } {
   const combinedText = lines.map((line) => line.text).join('');
   return validateOcrText(combinedText);
+}
+
+export interface OpenRouterStreamUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
+interface OpenRouterUsageLogInput {
+  route: string;
+  model?: string;
+  usage?: OpenRouterStreamUsage | null;
+  estimatedPromptTokens: number;
+  estimatedCompletionTokens: number;
+  outputChars?: number;
+  completed: boolean;
+}
+
+function logAiUsage(payload: Record<string, unknown>): void {
+  const context = getAnalyticsContext();
+  const enrichedPayload: Record<string, unknown> = {
+    ...payload,
+    requestId: context?.requestId,
+    route: payload.route ?? context?.route,
+    feature: payload.feature ?? context?.feature,
+    clientType: context?.clientType,
+    clientVersion: context?.clientVersion,
+    clientIdHash: context?.clientIdHash,
+  };
+
+  console.log(`[AI_USAGE] ${JSON.stringify(enrichedPayload)}`);
+  captureAnalytics('provider_usage', {
+    provider: enrichedPayload.service,
+    model: enrichedPayload.model,
+    route: enrichedPayload.route,
+    feature: enrichedPayload.feature,
+    prompt_tokens: enrichedPayload.promptTokens,
+    completion_tokens: enrichedPayload.completionTokens,
+    total_tokens: enrichedPayload.totalTokens,
+    estimated_cost_usd: enrichedPayload.estimatedCostUsd,
+    ocr_units: enrichedPayload.units,
+    input_bytes: enrichedPayload.inputBytes,
+    output_chars: enrichedPayload.outputChars ?? enrichedPayload.extractedChars,
+    completed: enrichedPayload.completed,
+    request_id: enrichedPayload.requestId,
+  });
+}
+
+export function estimateTokensFromText(text: string): number {
+  if (!text) return 0;
+
+  const cjkChars = text.match(CHINESE_CHAR_REGEX_G)?.length ?? 0;
+  const nonCjkChars = Math.max(0, text.length - cjkChars);
+  return Math.max(1, Math.ceil(cjkChars + nonCjkChars / 4));
+}
+
+export function estimateStreamParsePromptTokens(sentence: string, context?: string): number {
+  const userContent = context
+    ? `Context:\n${context}\n\nTarget sentence:\n${sentence}`
+    : sentence;
+  return estimateTokensFromText(SYSTEM_PROMPT) + estimateTokensFromText(userContent);
+}
+
+export function extractOpenRouterUsageFromSseLine(sseData: string): OpenRouterStreamUsage | null {
+  if (!sseData.startsWith('data: ')) return null;
+
+  const jsonStr = sseData.slice(6).trim();
+  if (!jsonStr || jsonStr === '[DONE]') return null;
+
+  try {
+    const parsed = JSON.parse(jsonStr) as {
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      };
+    };
+
+    const usage = parsed.usage;
+    if (!usage) return null;
+
+    return {
+      promptTokens: Number.isFinite(usage.prompt_tokens) ? usage.prompt_tokens : undefined,
+      completionTokens: Number.isFinite(usage.completion_tokens) ? usage.completion_tokens : undefined,
+      totalTokens: Number.isFinite(usage.total_tokens) ? usage.total_tokens : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function logOpenRouterUsage(input: OpenRouterUsageLogInput): void {
+  const promptTokens = input.usage?.promptTokens ?? input.estimatedPromptTokens;
+  const completionTokens = input.usage?.completionTokens ?? input.estimatedCompletionTokens;
+  const totalTokens = input.usage?.totalTokens ?? promptTokens + completionTokens;
+  const estimatedCostUsd =
+    promptTokens * config.openrouter.promptCostPerToken
+    + completionTokens * config.openrouter.completionCostPerToken;
+
+  logAiUsage({
+    service: 'openrouter',
+    model: input.model ?? config.openrouter.model,
+    route: input.route,
+    usageSource: input.usage ? 'actual' : 'estimated',
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    outputChars: input.outputChars,
+    maxTokens: config.openrouter.maxTokens,
+    estimatedCostUsd: Number(estimatedCostUsd.toFixed(8)),
+    completed: input.completed,
+  });
 }
 
 /**
@@ -797,8 +911,10 @@ export async function streamParse(sentence: string, context?: string): Promise<R
           },
         ],
         stream: true,
+        stream_options: { include_usage: true },
         response_format: { type: 'json_object' },
         temperature: TEMPERATURE,
+        max_tokens: config.openrouter.maxTokens,
         provider: {
           sort: 'throughput',
         },
@@ -896,6 +1012,17 @@ async function extractLinesFromImage(imageDataUrl: string): Promise<OcrResult> {
     if (!validation.valid) {
       throw new Error(validation.error || 'Could not extract sufficient Chinese text from image');
     }
+
+    logAiUsage({
+      service: 'google_cloud_vision',
+      feature: 'TEXT_DETECTION',
+      units: 1,
+      inputBytes: buffer.length,
+      imageWidth: imageSize?.width,
+      imageHeight: imageSize?.height,
+      extractedChars: ocrResult.text.length,
+      estimatedCostUsd: GOOGLE_VISION_OCR_COST_PER_UNIT,
+    });
 
     return ocrResult;
   } catch (error) {
@@ -1011,6 +1138,7 @@ export async function parseNonStreaming(
         stream: false,
         response_format: { type: 'json_object' },
         temperature: TEMPERATURE,
+        max_tokens: config.openrouter.maxTokens,
         provider: providerOverride
           ? { only: [providerOverride] }
           : { sort: 'throughput' },
@@ -1055,14 +1183,30 @@ export async function parseNonStreaming(
       throw new Error('Invalid AI response format');
     }
 
+    const usage = {
+      prompt: data.usage?.prompt_tokens ?? 0,
+      completion: data.usage?.completion_tokens ?? 0,
+      total: data.usage?.total_tokens ?? 0,
+    };
+
+    logOpenRouterUsage({
+      route: 'eval-parse',
+      model,
+      usage: {
+        promptTokens: usage.prompt,
+        completionTokens: usage.completion,
+        totalTokens: usage.total,
+      },
+      estimatedPromptTokens: estimateStreamParsePromptTokens(sentence),
+      estimatedCompletionTokens: estimateTokensFromText(content),
+      outputChars: content.length,
+      completed: true,
+    });
+
     return {
       result,
       model,
-      usage: {
-        prompt: data.usage?.prompt_tokens ?? 0,
-        completion: data.usage?.completion_tokens ?? 0,
-        total: data.usage?.total_tokens ?? 0,
-      },
+      usage,
     };
   } catch (error) {
     clearTimeout(timeoutId);

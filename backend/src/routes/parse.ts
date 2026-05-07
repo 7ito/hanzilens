@@ -3,11 +3,22 @@ import {
   streamParse, 
   streamParseImage, 
   ocrImage,
+  estimateStreamParsePromptTokens,
+  estimateTokensFromText,
+  extractOpenRouterUsageFromSseLine,
   isConfigured, 
   isVisionConfigured,
+  logOpenRouterUsage,
+  type OpenRouterStreamUsage,
 } from '../services/ai.js';
 import { validateParseInput, validateImageInput, ValidatedRequest } from '../middleware/validation.js';
-import { imageParseRateLimit, ocrRateLimit, parseRateLimit } from '../middleware/rateLimit.js';
+import {
+  imageParseRateLimit,
+  ocrRateLimit,
+  ocrRequestAbuseRateLimit,
+  parseRateLimit,
+  parseRequestAbuseRateLimit,
+} from '../middleware/rateLimit.js';
 import { HttpError } from '../middleware/errorHandler.js';
 import { buildPinyinMap, type PinyinMap } from '../services/pinyinCorrection.js';
 import { createStreamState, processStreamBuffer, extractDeltaContent } from '../services/streamProcessor.js';
@@ -45,7 +56,7 @@ function sendImmediateTranslation(res: ExpressResponse, sentence: string): void 
  *   words: [{ id, text, startOffset, endOffset, lineId, box, confidence? }]
  * }
  */
-router.post('/ocr', ocrRateLimit, validateImageInput, async (req: ValidatedRequest, res: ExpressResponse) => {
+router.post('/ocr', ocrRequestAbuseRateLimit, validateImageInput, ocrRateLimit, async (req: ValidatedRequest, res: ExpressResponse) => {
   try {
     if (!isVisionConfigured()) {
       throw new HttpError(503, 'AI service not configured');
@@ -81,7 +92,11 @@ async function streamResponseWithCorrection(
   aiResponse: Response, 
   req: Request, 
   res: ExpressResponse,
-  pinyinMap: PinyinMap
+  pinyinMap: PinyinMap,
+  usageMetadata: {
+    route: string;
+    estimatedPromptTokens: number;
+  }
 ): Promise<void> {
   if (!aiResponse.body) {
     res.status(502).json({
@@ -103,6 +118,23 @@ async function streamResponseWithCorrection(
   let clientDisconnected = false;
   let streamState = createStreamState();
   let sseLineBuffer = '';
+  let upstreamUsage: OpenRouterStreamUsage | null = null;
+  let outputContent = '';
+  let usageLogged = false;
+
+  const logUsage = (completed: boolean) => {
+    if (usageLogged) return;
+    usageLogged = true;
+
+    logOpenRouterUsage({
+      route: usageMetadata.route,
+      usage: upstreamUsage,
+      estimatedPromptTokens: usageMetadata.estimatedPromptTokens,
+      estimatedCompletionTokens: estimateTokensFromText(outputContent),
+      outputChars: outputContent.length,
+      completed,
+    });
+  };
 
   req.on('close', () => {
     clientDisconnected = true;
@@ -121,6 +153,7 @@ async function streamResponseWithCorrection(
         }
         res.write('data: [DONE]\n');
         res.end();
+        logUsage(true);
         break;
       }
 
@@ -145,10 +178,18 @@ async function streamResponseWithCorrection(
           continue;
         }
         
+        const usage = extractOpenRouterUsageFromSseLine(trimmedLine);
+        if (usage) {
+          upstreamUsage = usage;
+          continue;
+        }
+
         // Extract content from SSE
         const content = extractDeltaContent(trimmedLine);
         
         if (content !== null) {
+          outputContent += content;
+
           // Add to buffer and process
           streamState.buffer += content;
           
@@ -173,6 +214,8 @@ async function streamResponseWithCorrection(
     if (!res.writableEnded) {
       res.end();
     }
+  } finally {
+    logUsage(false);
   }
 }
 
@@ -195,7 +238,7 @@ async function streamResponseWithCorrection(
  * - data: {"choices":[{"delta":{"content":"..."}}]}
  * - data: [DONE]
  */
-router.post('/parse', imageParseRateLimit, parseRateLimit, validateParseInput, async (req: ValidatedRequest, res: ExpressResponse) => {
+router.post('/parse', parseRequestAbuseRateLimit, validateParseInput, imageParseRateLimit, parseRateLimit, async (req: ValidatedRequest, res: ExpressResponse) => {
   const isImageInput = !!req.validatedImage;
 
   try {
@@ -215,7 +258,10 @@ router.post('/parse', imageParseRateLimit, parseRateLimit, validateParseInput, a
       const pinyinMap = buildPinyinMap(extractedText);
       
       // Stream with pinyin correction (same as text input now!)
-      await streamResponseWithCorrection(aiResponse, req, res, pinyinMap);
+      await streamResponseWithCorrection(aiResponse, req, res, pinyinMap, {
+        route: 'parse-image-combined',
+        estimatedPromptTokens: estimateStreamParsePromptTokens(extractedText),
+      });
     } else {
       // Text input - use text model
       if (!isConfigured()) {
@@ -235,7 +281,10 @@ router.post('/parse', imageParseRateLimit, parseRateLimit, validateParseInput, a
       aiResponse = await streamParse(sentence, req.validatedContext);
       
       // Text - stream with real-time pinyin correction
-      await streamResponseWithCorrection(aiResponse, req, res, pinyinMap);
+      await streamResponseWithCorrection(aiResponse, req, res, pinyinMap, {
+        route: 'parse-text',
+        estimatedPromptTokens: estimateStreamParsePromptTokens(sentence, req.validatedContext),
+      });
     }
   } catch (error) {
     console.error('Error in /parse:', error);

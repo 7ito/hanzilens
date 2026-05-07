@@ -137,4 +137,4 @@ Files:
 
 ## Rate Limiting
 
-The /ocr endpoint has its own OCR-specific client, IP, and global fixed-window limits. Defaults are 3/minute, 20/hour, 30/day per client, 10/minute, 100/hour, 300/day per IP, and 500/day globally. Image mode can issue multiple sentence parses after OCR, so parse concurrency is capped and parse requests also use the /parse limits.
+The /ocr endpoint has a pre-validation IP abuse throttle, then OCR-specific client, IP, and global fixed-window limits after image validation. Defaults are 3/minute, 20/hour, 30/day per client, 10/minute, 100/hour, 300/day per IP, and 500/day globally. RATE_LIMIT_USAGE_MULTIPLIER scales all nonzero limits globally. Image mode can issue multiple sentence parses after OCR, so parse concurrency is capped and parse requests also use the /parse limits.

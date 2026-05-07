@@ -6,6 +6,7 @@ import dictionaryRouter from './routes/dictionary.js';
 import parseRouter from './routes/parse.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { rateLimitClientHeaders } from './middleware/rateLimit.js';
+import { requestAnalyticsMiddleware } from './services/analytics.js';
 
 // Validate required configuration on startup
 validateConfig();
@@ -37,6 +38,7 @@ app.use(cors({
 
 // Body parser with size limit (10MB to accommodate base64 images)
 app.use(express.json({ limit: '10mb' }));
+app.use(requestAnalyticsMiddleware);
 
 // Health check endpoint
 app.get('/', (_req, res) => {

@@ -1,7 +1,17 @@
-import { createHash } from 'node:crypto';
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { createClient, type RedisClientType } from 'redis';
 import { config } from '../config/index.js';
+import { hasChinese } from '../utils/chinese.js';
+import { captureAnalytics } from '../services/analytics.js';
+import {
+  CLIENT_FEATURE_HEADER,
+  CLIENT_ID_HEADER,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+  getRawClientIdentifier,
+  getRequestIp,
+  hashAnalyticsIdentifier,
+} from '../services/clientIdentity.js';
 
 type RateLimitScope = 'client' | 'ip' | 'global';
 type RateLimitWindow = 'minute' | 'hour' | 'day';
@@ -12,6 +22,10 @@ interface RateLimitPolicy {
   window: RateLimitWindow;
   windowMs: number;
   limit: number;
+}
+
+interface RateLimiterOptions {
+  skip?: (req: Request) => boolean;
 }
 
 interface CounterResult {
@@ -29,9 +43,6 @@ interface MemoryCounter {
   resetAt: number;
 }
 
-const CLIENT_ID_HEADER = 'x-hanzilens-client-id';
-const CLIENT_TYPE_HEADER = 'x-hanzilens-client';
-const CLIENT_VERSION_HEADER = 'x-hanzilens-client-version';
 const MEMORY_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 const memoryCounters = new Map<string, MemoryCounter>();
@@ -77,40 +88,16 @@ function getWindowStart(now: number, windowMs: number): number {
   return Math.floor(now / windowMs) * windowMs;
 }
 
-function hashIdentifier(value: string): string {
-  return createHash('sha256').update(value).digest('hex').slice(0, 24);
-}
-
-function sanitizeHeaderIdentifier(value: string | undefined, minLength = 8): string | null {
-  const trimmed = value?.trim();
-  if (!trimmed) return null;
-  if (trimmed.length < minLength || trimmed.length > 128) return null;
-  if (!/^[A-Za-z0-9._:-]+$/.test(trimmed)) return null;
-  return trimmed;
-}
-
-function getClientIdentifier(req: Request): string | null {
-  const clientId = sanitizeHeaderIdentifier(req.get(CLIENT_ID_HEADER));
-  if (!clientId) return null;
-
-  const clientType = sanitizeHeaderIdentifier(req.get(CLIENT_TYPE_HEADER), 1) || 'unknown';
-  return `${clientType}:${clientId}`;
-}
-
-function getIpIdentifier(req: Request): string {
-  return req.ip || req.socket.remoteAddress || 'unknown';
-}
-
 function getPolicySubject(req: Request, scope: RateLimitScope): string | null {
-  if (scope === 'client') return getClientIdentifier(req);
-  if (scope === 'ip') return getIpIdentifier(req);
+  if (scope === 'client') return getRawClientIdentifier(req);
+  if (scope === 'ip') return getRequestIp(req);
   return 'all';
 }
 
 function buildCounterKey(limiterName: string, policy: RateLimitPolicy, subject: string, now: number): { key: string; resetAt: number } {
   const windowStart = getWindowStart(now, policy.windowMs);
   const resetAt = windowStart + policy.windowMs;
-  const subjectHash = hashIdentifier(subject);
+  const subjectHash = hashAnalyticsIdentifier(subject).slice(0, 24);
   const key = `rate-limit:${limiterName}:${policy.name}:${policy.scope}:${subjectHash}:${windowStart}`;
   return { key, resetAt };
 }
@@ -154,6 +141,11 @@ async function incrementRedisCounter(key: string, resetAt: number, now: number):
 async function incrementCounter(key: string, resetAt: number, now: number): Promise<CounterResult> {
   const redisResult = await incrementRedisCounter(key, resetAt, now);
   if (redisResult) return redisResult;
+
+  if (config.rateLimit.requireRedis) {
+    throw new Error('Redis rate limit store unavailable');
+  }
+
   return incrementMemoryCounter(key, resetAt, now);
 }
 
@@ -183,10 +175,20 @@ function rateLimitMessage(message: string, retryAfterSeconds: number) {
   };
 }
 
-function createRateLimiter(limiterName: string, policies: RateLimitPolicy[], message: string): RequestHandler {
+function createRateLimiter(
+  limiterName: string,
+  policies: RateLimitPolicy[],
+  message: string,
+  options: RateLimiterOptions = {}
+): RequestHandler {
   const configuredPolicies = activePolicies(policies);
 
   return async (req: Request, res: Response, next: NextFunction) => {
+    if (options.skip?.(req)) {
+      next();
+      return;
+    }
+
     if (configuredPolicies.length === 0) {
       next();
       return;
@@ -213,6 +215,15 @@ function createRateLimiter(limiterName: string, policies: RateLimitPolicy[], mes
 
       if (exceeded) {
         const retryAfterSeconds = Math.max(1, Math.ceil((exceeded.resetAt - now) / 1000));
+        captureAnalytics('rate_limit_blocked', {
+          limiter_name: limiterName,
+          policy_name: exceeded.policy.name,
+          policy_scope: exceeded.policy.scope,
+          limit: exceeded.policy.limit,
+          count: exceeded.count,
+          retry_after_seconds: retryAfterSeconds,
+          route: req.path,
+        });
         res.setHeader('Retry-After', String(retryAfterSeconds));
         res.status(429).json(rateLimitMessage(message, retryAfterSeconds));
         return;
@@ -241,6 +252,30 @@ const parseLimits = config.rateLimit.parse;
 const ocrLimits = config.rateLimit.ocr;
 const lookupLimits = config.rateLimit.lookup;
 const evalLimits = config.rateLimit.eval;
+const abuseLimits = config.rateLimit.abuse;
+
+function shouldSkipBillableParseLimit(req: Request): boolean {
+  const validatedText = (req as Request & { validatedText?: string }).validatedText;
+  return typeof validatedText === 'string' && !hasChinese(validatedText);
+}
+
+/**
+ * Pre-validation abuse throttle for /parse requests.
+ * Billable parse quota is applied after validation.
+ */
+export const parseRequestAbuseRateLimit = createRateLimiter('parse-request', [
+  minutePolicy('ip-minute', 'ip', abuseLimits.parseIpPerMinute),
+  hourPolicy('ip-hour', 'ip', abuseLimits.parseIpPerHour),
+], 'Please slow down parse requests');
+
+/**
+ * Pre-validation abuse throttle for /ocr requests.
+ * Billable OCR quota is applied after image validation.
+ */
+export const ocrRequestAbuseRateLimit = createRateLimiter('ocr-request', [
+  minutePolicy('ip-minute', 'ip', abuseLimits.ocrIpPerMinute),
+  hourPolicy('ip-hour', 'ip', abuseLimits.ocrIpPerHour),
+], 'Please slow down OCR requests');
 
 /**
  * Rate limiter for /parse text requests.
@@ -253,7 +288,9 @@ export const parseRateLimit = createRateLimiter('parse', [
   hourPolicy('ip-hour', 'ip', parseLimits.ipPerHour),
   dayPolicy('ip-day', 'ip', parseLimits.ipPerDay),
   dayPolicy('global-day', 'global', parseLimits.globalPerDay),
-], 'Please wait before parsing more sentences');
+], 'Please wait before parsing more sentences', {
+  skip: shouldSkipBillableParseLimit,
+});
 
 /**
  * Rate limiter for OCR requests.
@@ -297,4 +334,9 @@ export const evalRateLimit = createRateLimiter('eval', [
   minutePolicy('ip-minute', 'ip', evalLimits.ipPerMinute),
 ], 'Eval endpoint rate limit exceeded');
 
-export const rateLimitClientHeaders = [CLIENT_ID_HEADER, CLIENT_TYPE_HEADER, CLIENT_VERSION_HEADER] as const;
+export const rateLimitClientHeaders = [
+  CLIENT_ID_HEADER,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+  CLIENT_FEATURE_HEADER,
+] as const;
