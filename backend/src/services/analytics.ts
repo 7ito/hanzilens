@@ -14,6 +14,7 @@ interface AnalyticsContext extends ClientIdentity {
 type AnalyticsProperties = Record<string, unknown>;
 
 const requestContext = new AsyncLocalStorage<AnalyticsContext>();
+const ANALYTICS_CAPTURE_TIMEOUT_MS = 2_000;
 let loggedProviderFailure = false;
 
 function safeString(value: unknown): string | undefined {
@@ -21,18 +22,24 @@ function safeString(value: unknown): string | undefined {
 }
 
 function imageSummary(imageDataUrl: string): AnalyticsProperties {
-  const match = /^data:([^;,]+);base64,(.*)$/s.exec(imageDataUrl);
-  if (!match) return { input_type: 'image' };
+  const match = /^data:([^;,]{1,64});base64,/.exec(imageDataUrl);
+  if (!match) return { input_type: 'image', image_mime: 'invalid' };
+
+  const mimeType = match[1];
+  const allowedTypes = config.image.allowedMimeTypes as readonly string[];
+  const imageMime = allowedTypes.includes(mimeType) ? mimeType : 'invalid';
+  const base64Length = Math.max(0, imageDataUrl.length - match[0].length);
 
   return {
     input_type: 'image',
-    image_mime: match[1],
-    image_size_bytes: Math.floor((match[2].length * 3) / 4),
+    image_mime: imageMime,
+    image_size_bytes: Math.floor((base64Length * 3) / 4),
   };
 }
 
-function endpointSummary(req: Request, statusCode: number): AnalyticsProperties {
+function endpointSummary(req: Request, res: Response): AnalyticsProperties {
   const body = req.body as Record<string, unknown> | undefined;
+  const statusCode = res.statusCode;
 
   if (req.path === '/parse') {
     const image = safeString(body?.image);
@@ -50,7 +57,11 @@ function endpointSummary(req: Request, statusCode: number): AnalyticsProperties 
 
   if (req.path === '/ocr') {
     const image = safeString(body?.image);
-    return image ? imageSummary(image) : { input_type: 'image' };
+    const requestSummary = image ? imageSummary(image) : { input_type: 'image' };
+    return {
+      ...requestSummary,
+      ...(res.locals.analytics as AnalyticsProperties | undefined),
+    };
   }
 
   if (req.path === '/definitionLookup') {
@@ -93,6 +104,9 @@ export function captureAnalytics(event: string, properties: AnalyticsProperties 
 
   const distinctId = context?.clientIdHash ?? context?.ipHash ?? 'anonymous';
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), ANALYTICS_CAPTURE_TIMEOUT_MS);
+
   void fetch(`${config.analytics.posthogHost.replace(/\/$/, '')}/capture/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -105,11 +119,17 @@ export function captureAnalytics(event: string, properties: AnalyticsProperties 
         ...properties,
       },
     }),
+    signal: controller.signal,
   }).catch((error) => {
     if (!loggedProviderFailure) {
-      console.error('Analytics capture failed. Continuing without analytics:', error);
+      const message = error instanceof Error && error.name === 'AbortError'
+        ? `Analytics capture timed out after ${ANALYTICS_CAPTURE_TIMEOUT_MS}ms. Continuing without analytics.`
+        : 'Analytics capture failed. Continuing without analytics:';
+      console.error(message, error);
       loggedProviderFailure = true;
     }
+  }).finally(() => {
+    clearTimeout(timeoutId);
   });
 }
 
@@ -128,24 +148,35 @@ export const requestAnalyticsMiddleware: RequestHandler = (req: Request, res: Re
     method: req.method,
   };
 
-  requestContext.run(context, () => {
-    res.on('finish', () => {
-      requestContext.run(context, () => {
-        const durationMs = Math.round(performance.now() - startedAt);
-        const eventName = eventNameForPath(req.path);
-        const common = {
-          route: req.path,
-          method: req.method,
-          status_code: res.statusCode,
-          duration_ms: durationMs,
-          user_agent_family: req.get('user-agent')?.split(/[ /]/)[0]?.slice(0, 80),
-          ...endpointSummary(req, res.statusCode),
-        };
+  let analyticsEmitted = false;
 
-        if (eventName) captureAnalytics(eventName, common);
-        if (res.statusCode >= 500) captureAnalytics('api_request_failed', common);
-      });
+  function emitRequestAnalytics(trigger: 'finish' | 'close') {
+    if (analyticsEmitted) return;
+    analyticsEmitted = true;
+
+    requestContext.run(context, () => {
+      const completed = trigger === 'finish' || res.writableEnded;
+      const durationMs = Math.round(performance.now() - startedAt);
+      const eventName = eventNameForPath(req.path);
+      const common = {
+        route: req.path,
+        method: req.method,
+        status_code: res.statusCode,
+        duration_ms: durationMs,
+        completed,
+        aborted: !completed,
+        user_agent_family: req.get('user-agent')?.split(/[ /]/)[0]?.slice(0, 80),
+        ...endpointSummary(req, res),
+      };
+
+      if (eventName) captureAnalytics(eventName, common);
+      if (res.statusCode >= 400 || !completed) captureAnalytics('api_request_failed', common);
     });
+  }
+
+  requestContext.run(context, () => {
+    res.on('finish', () => emitRequestAnalytics('finish'));
+    res.on('close', () => emitRequestAnalytics('close'));
 
     next();
   });

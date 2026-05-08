@@ -23,7 +23,9 @@ function getClientId(): string {
 
 export type ApiFeature =
   | 'web_text_parse'
+  | 'web_paragraph_sentence_parse'
   | 'web_image_ocr'
+  | 'web_image_parse'
   | 'web_image_sentence_parse'
   | 'web_lookup';
 
@@ -113,7 +115,7 @@ export async function lookupDefinition(token: string, signal?: AbortSignal): Pro
 export async function startParse(
   input: ParseInput,
   signal?: AbortSignal,
-  feature: ApiFeature = input.type === 'text' ? 'web_text_parse' : 'web_image_sentence_parse'
+  feature: ApiFeature = input.type === 'text' ? 'web_text_parse' : 'web_image_parse'
 ): Promise<Response> {
   const body = input.type === 'text' 
     ? { sentence: input.sentence, ...(input.context ? { context: input.context } : {}) }

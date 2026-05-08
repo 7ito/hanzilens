@@ -64,6 +64,7 @@ export function useParagraphParse() {
         combinedText,
         sentences: parsedSentences,
         sessionId,
+        feature: 'web_paragraph_sentence_parse',
       });
     } catch (error) {
       if (!isSessionActive(sessionId)) return;

@@ -65,6 +65,7 @@ export function useImageParse() {
         combinedText,
         sentences: parsedSentences,
         sessionId,
+        feature: 'web_image_sentence_parse',
       });
 
       setState((prev) => ({ ...prev, ocrResult: result }));

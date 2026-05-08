@@ -17,11 +17,10 @@ const posthogOptions = {
   autocapture: true,
   capture_pageview: false, // We handle this manually since there's no router
   capture_pageleave: true,
-  // Session replay settings (5K free recordings/month)
-  disable_session_recording: false,
+  // Session replay is disabled to avoid recording user-entered Chinese text or OCR results.
+  disable_session_recording: true,
   session_recording: {
-    maskAllInputs: false, // Don't mask - Chinese text input is useful to see
-    maskTextSelector: undefined,
+    maskAllInputs: true,
   },
   // Persistence
   persistence: "localStorage" as const,

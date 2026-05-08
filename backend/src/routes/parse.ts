@@ -22,7 +22,7 @@ import {
 import { HttpError } from '../middleware/errorHandler.js';
 import { buildPinyinMap, type PinyinMap } from '../services/pinyinCorrection.js';
 import { createStreamState, processStreamBuffer, extractDeltaContent } from '../services/streamProcessor.js';
-import { hasChinese } from '../utils/chinese.js';
+import { CHINESE_CHAR_REGEX_G, hasChinese } from '../utils/chinese.js';
 
 const router = Router();
 
@@ -63,6 +63,13 @@ router.post('/ocr', ocrRequestAbuseRateLimit, validateImageInput, ocrRateLimit, 
     }
 
     const ocrResult = await ocrImage(req.validatedImage!);
+    res.locals.analytics = {
+      extracted_chars: ocrResult.text.length,
+      extracted_chinese_chars: ocrResult.text.match(CHINESE_CHAR_REGEX_G)?.length ?? 0,
+      ocr_line_count: ocrResult.lines.length,
+      ocr_word_count: ocrResult.words.length,
+      reading_direction: ocrResult.readingDirection,
+    };
     res.json(ocrResult);
   } catch (error) {
     if (error instanceof HttpError) throw error;

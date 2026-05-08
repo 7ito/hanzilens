@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError, startParse } from '@/lib/api';
+import { ApiError, startParse, type ApiFeature } from '@/lib/api';
 import { parseSseResponse } from '@/lib/parseSse';
 import { createAbortError, isAbortError } from '@/lib/abort';
 import type { ParseResponse, SentenceChunk } from '@/types';
@@ -25,6 +25,7 @@ interface InitializeQueueInput {
   combinedText: string;
   sentences: SentenceChunk[];
   sessionId?: number;
+  feature: ApiFeature;
 }
 
 interface UseSentenceParseQueueResult extends SentenceParseQueueState {
@@ -105,6 +106,7 @@ export function useSentenceParseQueue(): UseSentenceParseQueueResult {
   const userOpenedRef = useRef<Set<string>>(new Set());
   const sessionIdRef = useRef(0);
   const combinedTextRef = useRef('');
+  const parseFeatureRef = useRef<ApiFeature>('web_image_sentence_parse');
 
   useEffect(() => {
     stateRef.current = state;
@@ -129,6 +131,7 @@ export function useSentenceParseQueue(): UseSentenceParseQueueResult {
     sentenceIndexRef.current = {};
     userOpenedRef.current = new Set();
     combinedTextRef.current = '';
+    parseFeatureRef.current = 'web_image_sentence_parse';
 
     return sessionIdRef.current;
   }, []);
@@ -182,6 +185,7 @@ export function useSentenceParseQueue(): UseSentenceParseQueueResult {
 
     try {
       const context = buildSentenceContext(combinedTextRef.current, sentence);
+      const feature = parseFeatureRef.current;
       let result: ParseResponse | null = null;
 
       const applyPartialResult = (partial: unknown) => {
@@ -227,7 +231,7 @@ export function useSentenceParseQueue(): UseSentenceParseQueueResult {
           const response = await startParse(
             { type: 'text', sentence: sentence.text, context },
             controller.signal,
-            'web_image_sentence_parse'
+            feature
           );
           result = await parseSseResponse(response, {
             signal: controller.signal,
@@ -331,7 +335,7 @@ export function useSentenceParseQueue(): UseSentenceParseQueueResult {
     runQueue(sessionIdRef.current);
   }, [enqueueSentence, prefetchFollowingSentences, runQueue]);
 
-  const initialize = useCallback(({ combinedText, sentences, sessionId }: InitializeQueueInput) => {
+  const initialize = useCallback(({ combinedText, sentences, sessionId, feature }: InitializeQueueInput) => {
     if (typeof sessionId === 'number' && sessionIdRef.current !== sessionId) {
       return;
     }
@@ -339,6 +343,7 @@ export function useSentenceParseQueue(): UseSentenceParseQueueResult {
     const activeSessionId = sessionIdRef.current;
 
     combinedTextRef.current = combinedText;
+    parseFeatureRef.current = feature;
 
     const sentenceMap: Record<string, SentenceChunk> = {};
     const sentenceOrder = sentences.map((sentence) => sentence.id);

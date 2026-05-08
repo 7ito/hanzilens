@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { createClient, type RedisClientType } from 'redis';
 import { config } from '../config/index.js';
@@ -10,7 +11,6 @@ import {
   CLIENT_VERSION_HEADER,
   getRawClientIdentifier,
   getRequestIp,
-  hashAnalyticsIdentifier,
 } from '../services/clientIdentity.js';
 
 type RateLimitScope = 'client' | 'ip' | 'global';
@@ -88,6 +88,10 @@ function getWindowStart(now: number, windowMs: number): number {
   return Math.floor(now / windowMs) * windowMs;
 }
 
+function hashRateLimitIdentifier(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 24);
+}
+
 function getPolicySubject(req: Request, scope: RateLimitScope): string | null {
   if (scope === 'client') return getRawClientIdentifier(req);
   if (scope === 'ip') return getRequestIp(req);
@@ -97,7 +101,7 @@ function getPolicySubject(req: Request, scope: RateLimitScope): string | null {
 function buildCounterKey(limiterName: string, policy: RateLimitPolicy, subject: string, now: number): { key: string; resetAt: number } {
   const windowStart = getWindowStart(now, policy.windowMs);
   const resetAt = windowStart + policy.windowMs;
-  const subjectHash = hashAnalyticsIdentifier(subject).slice(0, 24);
+  const subjectHash = hashRateLimitIdentifier(subject);
   const key = `rate-limit:${limiterName}:${policy.name}:${policy.scope}:${subjectHash}:${windowStart}`;
   return { key, resetAt };
 }

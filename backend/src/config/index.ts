@@ -68,7 +68,7 @@ export const config = {
   analytics: {
     enabled: process.env.ANALYTICS_ENABLED === 'true',
     posthogKey: process.env.ANALYTICS_POSTHOG_KEY || '',
-    posthogHost: process.env.ANALYTICS_POSTHOG_HOST || 'https://app.posthog.com',
+    posthogHost: process.env.ANALYTICS_POSTHOG_HOST || 'https://us.i.posthog.com',
     hashSecret: process.env.ANALYTICS_HASH_SECRET || '',
   },
 
@@ -170,6 +170,10 @@ export function validateConfig(): void {
 
   if (config.rateLimit.requireRedis && !config.rateLimit.redisUrl) {
     errors.push('REDIS_URL is required when Redis-backed rate limits are required');
+  }
+
+  if (config.analytics.enabled && !config.analytics.posthogKey) {
+    errors.push('ANALYTICS_POSTHOG_KEY is required when analytics are enabled');
   }
 
   if (config.analytics.enabled && !config.analytics.hashSecret) {
