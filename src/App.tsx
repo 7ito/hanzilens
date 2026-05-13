@@ -1,0 +1,150 @@
+import { useState, useEffect, useRef } from 'react';
+import { InputView } from '@/components/InputView';
+import { ResultsView } from '@/components/ResultsView';
+import { ImageResultsView } from '@/components/ImageResultsView';
+import { ParagraphResultsView } from '@/components/ParagraphResultsView';
+import { HelpDialog } from '@/components/HelpDialog';
+import { useParse } from '@/hooks/useParse';
+import { useImageParse } from '@/hooks/useImageParse';
+import { useParagraphParse } from '@/hooks/useParagraphParse';
+import { useAnalytics, AnalyticsEvents } from '@/hooks/useAnalytics';
+import { splitCombinedTextIntoSentences } from '@/lib/sentenceSplit';
+import type { ViewState, ParseInput } from '@/types';
+
+const HAS_VISITED_KEY = 'hanzilens-has-visited';
+const PARAGRAPH_THRESHOLD = 150;
+
+function shouldUseParagraphMode(text: string): boolean {
+  if (text.length > PARAGRAPH_THRESHOLD) return true;
+  const sentences = splitCombinedTextIntoSentences(text);
+  return sentences.length > 1;
+}
+
+export function App() {
+  const [view, setView] = useState<ViewState>('input');
+  const [showHelp, setShowHelp] = useState(false);
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [paragraphText, setParagraphText] = useState('');
+  const { isLoading, translation, translationParts, segments, parse, reset } = useParse();
+  const imageParse = useImageParse();
+  const paragraphParse = useParagraphParse();
+  const { trackEvent, trackPageView } = useAnalytics();
+  const hasTrackedInitialView = useRef(false);
+
+  // Track initial page view on mount
+  useEffect(() => {
+    if (!hasTrackedInitialView.current) {
+      trackPageView('input');
+      hasTrackedInitialView.current = true;
+    }
+  }, [trackPageView]);
+
+  // Show help dialog on first visit and track first_visit event
+  useEffect(() => {
+    const hasVisited = localStorage.getItem(HAS_VISITED_KEY);
+    if (!hasVisited) {
+      setShowHelp(true);
+      localStorage.setItem(HAS_VISITED_KEY, 'true');
+      trackEvent(AnalyticsEvents.FIRST_VISIT);
+    }
+  }, [trackEvent]);
+
+  const handleSubmit = async (input: ParseInput) => {
+    if (input.type === 'image') {
+      setImageDataUrl(input.image);
+      setView('image-results');
+      trackPageView('image-results');
+      await imageParse.start(input.image);
+      return;
+    }
+
+    const trimmed = input.sentence.trim();
+    if (shouldUseParagraphMode(trimmed)) {
+      setParagraphText(trimmed);
+      setView('paragraph-results');
+      trackPageView('paragraph-results');
+      await paragraphParse.start(trimmed);
+      return;
+    }
+
+    setView('results');
+    trackPageView('results');
+    await parse(input);
+  };
+
+  const handleBack = () => {
+    reset();
+    imageParse.reset();
+    paragraphParse.reset();
+    setImageDataUrl(null);
+    setParagraphText('');
+    setView('input');
+    trackPageView('input');
+  };
+
+  const handleHelpClick = () => {
+    setShowHelp(true);
+    trackEvent(AnalyticsEvents.HELP_OPENED);
+  };
+
+  const handleHelpClose = () => {
+    setShowHelp(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      {view === 'input' ? (
+        <InputView
+          onSubmit={handleSubmit}
+          isLoading={isLoading}
+          onHelpClick={handleHelpClick}
+        />
+      ) : view === 'results' ? (
+        <ResultsView
+          translation={translation}
+          translationParts={translationParts}
+          segments={segments}
+          isLoading={isLoading}
+          onBack={handleBack}
+          onHelpClick={handleHelpClick}
+        />
+      ) : view === 'paragraph-results' ? (
+        <ParagraphResultsView
+          text={paragraphText}
+          isPreparing={paragraphParse.isPreparing}
+          error={paragraphParse.error}
+          sentences={paragraphParse.sentences}
+          sentenceResults={paragraphParse.sentenceResults}
+          sentenceLoading={paragraphParse.sentenceLoading}
+          sentenceError={paragraphParse.sentenceError}
+          openSentenceIds={paragraphParse.openSentenceIds}
+          onBack={handleBack}
+          onHelpClick={handleHelpClick}
+          onSelectSentence={paragraphParse.selectSentence}
+        />
+      ) : (
+        imageDataUrl && (
+          <ImageResultsView
+            imageDataUrl={imageDataUrl}
+            isLoadingOcr={imageParse.isLoadingOcr}
+            ocrError={imageParse.ocrError}
+            ocrResult={imageParse.ocrResult}
+            sentences={imageParse.sentences}
+            sentenceResults={imageParse.sentenceResults}
+            sentenceLoading={imageParse.sentenceLoading}
+            sentenceError={imageParse.sentenceError}
+            openSentenceIds={imageParse.openSentenceIds}
+            onBack={handleBack}
+            onHelpClick={handleHelpClick}
+            onSelectSentence={imageParse.selectSentence}
+            onRetryOcr={() => imageParse.start(imageDataUrl)}
+          />
+        )
+      )}
+
+      <HelpDialog open={showHelp} onClose={handleHelpClose} />
+    </div>
+  );
+}
+
+export default App;

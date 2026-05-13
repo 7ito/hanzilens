@@ -1,0 +1,74 @@
+- generic [ref=e3]:
+  - link "Back" [ref=e5] [cursor=pointer]:
+    - /url: /
+    - img
+    - text: Back
+  - button "Switch to dark mode" [ref=e7]:
+    - img
+  - generic [ref=e8]:
+    - generic [ref=e9]:
+      - img [ref=e11]:
+        - generic [ref=e14]: 字
+      - heading "Privacy Policy" [level=1] [ref=e16]
+      - paragraph [ref=e17]: "Last updated: May 8, 2026"
+    - generic [ref=e19]:
+      - paragraph [ref=e20]: HanziLens helps users analyze Chinese text selected on webpages or captured from screenshot regions. This policy explains what data is transmitted, how it is used, and what HanziLens does not collect or sell.
+      - generic [ref=e21]:
+        - heading "Data HanziLens transmits" [level=2] [ref=e22]
+        - paragraph [ref=e23]: HanziLens does not continuously read webpages. It only sends content after you explicitly invoke analysis through the extension context menu, keyboard shortcut, screenshot selection tool, or dictionary lookup inside the HanziLens popup.
+        - list [ref=e24]:
+          - listitem [ref=e25]:
+            - strong [ref=e26]: "Selected text:"
+            - text: When you analyze selected Chinese text, the selected text is sent to the HanziLens API for parsing and translation.
+          - listitem [ref=e27]:
+            - strong [ref=e28]: "Screenshot OCR regions:"
+            - text: When you use screenshot OCR, the selected screenshot region is sent to the HanziLens API for OCR.
+          - listitem [ref=e29]:
+            - strong [ref=e30]: "OCR text and sentences:"
+            - text: OCR-derived Chinese text may be sent to the HanziLens API for parsing and translation.
+          - listitem [ref=e31]:
+            - strong [ref=e32]: "Dictionary lookup terms:"
+            - text: When you request a dictionary lookup, the selected Chinese word or phrase is sent to the HanziLens API.
+      - generic [ref=e33]:
+        - heading "Anonymous request metadata" [level=2] [ref=e34]
+        - paragraph [ref=e35]: "HanziLens may collect anonymous request metadata for abuse prevention, product analytics, debugging, reliability monitoring, rate limiting, and cost monitoring. This metadata may include:"
+        - list [ref=e36]:
+          - listitem [ref=e37]: Anonymous extension install ID
+          - listitem [ref=e38]: Extension version
+          - listitem [ref=e39]: API route
+          - listitem [ref=e40]: Feature name
+          - listitem [ref=e41]: Request timestamp
+          - listitem [ref=e42]: Request status
+          - listitem [ref=e43]: Approximate input size
+          - listitem [ref=e44]: Rate-limit status
+        - paragraph [ref=e45]: Anonymous request metadata is not used to store raw selected webpage text, raw OCR text, raw dictionary lookup text, raw screenshot image data, or raw IP addresses for analytics.
+      - generic [ref=e46]:
+        - heading "How data is used" [level=2] [ref=e47]
+        - paragraph [ref=e48]: "HanziLens uses transmitted content and request metadata to:"
+        - list [ref=e49]:
+          - listitem [ref=e50]: Provide text analysis, translation, OCR, and dictionary lookup features
+          - listitem [ref=e51]: Prevent abuse and enforce rate limits
+          - listitem [ref=e52]: Debug errors and improve reliability
+          - listitem [ref=e53]: Understand feature usage at an aggregate level
+          - listitem [ref=e54]: Monitor backend cost and performance
+      - generic [ref=e55]:
+        - heading "Third-party processing" [level=2] [ref=e56]
+        - paragraph [ref=e57]: The HanziLens backend may send selected text or OCR-derived text to its configured AI provider for linguistic analysis and translation. The current backend uses OpenRouter for text analysis. Dictionary lookup is handled by the HanziLens backend using its dictionary database.
+      - generic [ref=e58]:
+        - heading "Local browser storage" [level=2] [ref=e59]
+        - paragraph [ref=e60]: The extension stores settings locally in your browser, such as theme preference and an anonymous extension install ID. The extension does not store selected webpage text locally.
+      - generic [ref=e61]:
+        - heading "Data sharing and sale" [level=2] [ref=e62]
+        - paragraph [ref=e63]: HanziLens does not sell user data. HanziLens does not use user data for advertising. HanziLens does not share user data for credit, lending, employment, housing, insurance, or eligibility decisions.
+      - generic [ref=e64]:
+        - heading "Retention" [level=2] [ref=e65]
+        - paragraph [ref=e66]: Selected text, screenshot image regions, OCR text, and dictionary lookup terms are processed by the HanziLens backend to return requested results. Operational logs and anonymous request metadata may be retained for security, abuse prevention, debugging, analytics, reliability, and cost monitoring. Retention is limited to operational needs.
+      - generic [ref=e67]:
+        - heading "Permissions" [level=2] [ref=e68]
+        - paragraph [ref=e69]: HanziLens requests access to website content because it needs to read the text or screenshot region that you explicitly ask it to analyze. HanziLens requests access to the HanziLens API so the extension can provide parsing, translation, OCR, and dictionary lookup features.
+      - generic [ref=e70]:
+        - heading "Contact" [level=2] [ref=e71]
+        - paragraph [ref=e72]:
+          - text: "For privacy questions, contact:"
+          - link "support@hanzilens.com" [ref=e73] [cursor=pointer]:
+            - /url: mailto:support@hanzilens.com

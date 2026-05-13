@@ -1,0 +1,79 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - button "Help" [ref=e6]:
+        - img
+      - button "Switch to dark mode" [ref=e7]:
+        - img
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - img [ref=e12]:
+          - generic [ref=e15]: 字
+        - heading "HanziLens" [level=1] [ref=e17]
+        - paragraph [ref=e18]: Break down Chinese sentences!
+      - generic [ref=e19]:
+        - textbox [ref=e20]
+        - generic: 今天天气很好
+      - generic [ref=e22]: 0/1500
+      - generic [ref=e24]:
+        - generic [ref=e27]: or analyze an image
+        - button "Upload Image" [ref=e30]:
+          - img
+          - text: Upload Image
+        - paragraph [ref=e31]: Paste an image with Command/Ctrl+V
+      - button "Go" [disabled]
+  - generic [ref=e34]:
+    - button [ref=e35]:
+      - img
+    - generic [ref=e36]:
+      - heading "About HanziLens" [level=2] [ref=e38]
+      - generic [ref=e39]:
+        - paragraph [ref=e40]: HanziLens breaks down Chinese sentences into individual words and phrases, showing you the pinyin pronunciation and meaning of each segment.
+        - paragraph [ref=e41]: Click on any word to see its full dictionary entry with all possible meanings.
+      - generic [ref=e42]:
+        - heading "How to use" [level=3] [ref=e43]
+        - list [ref=e44]:
+          - listitem [ref=e45]: Paste or type a Chinese sentence
+          - listitem [ref=e46]: Click Go
+          - listitem [ref=e47]: Click on any word for more details
+      - generic [ref=e48]:
+        - heading "Example" [level=3] [ref=e49]
+        - generic [ref=e50]: "\"You have a bright future.\""
+        - generic [ref=e51]:
+          - generic [ref=e52] [cursor=pointer]:
+            - generic [ref=e54]:
+              - generic [ref=e55]: nǐ
+              - generic [ref=e56]: 你
+            - generic [ref=e57]: you
+          - generic [ref=e58] [cursor=pointer]:
+            - generic [ref=e60]:
+              - generic [ref=e61]: yǒu
+              - generic [ref=e62]: 有
+            - generic [ref=e63]: have
+          - generic [ref=e64] [cursor=pointer]:
+            - generic [ref=e65]:
+              - generic [ref=e66]:
+                - generic [ref=e67]: guāng
+                - generic [ref=e68]: 光
+              - generic [ref=e69]:
+                - generic [ref=e70]: míng
+                - generic [ref=e71]: 明
+            - generic [ref=e72]: bright
+          - generic [ref=e73] [cursor=pointer]:
+            - generic [ref=e75]:
+              - generic [ref=e76]: de
+              - generic [ref=e77]: 的
+            - generic [ref=e78]: "'s (possessive)"
+          - generic [ref=e79] [cursor=pointer]:
+            - generic [ref=e80]:
+              - generic [ref=e81]:
+                - generic [ref=e82]: wèi
+                - generic [ref=e83]: 未
+              - generic [ref=e84]:
+                - generic [ref=e85]: lái
+                - generic [ref=e86]: 来
+            - generic [ref=e87]: future
+          - generic [ref=e92]: 。
+        - paragraph [ref=e94]: Hover over words to see alignment highlighting!
+        - paragraph [ref=e95]: "Note: HanziLens currently uses MiMo V2 Flash to analyze and process Chinese text, and Google Cloud Vision for OCR. Image bounding boxes can vary in quality right now. There can still be occasional OCR, translation, or pinyin mistakes. Clicking on any segment allows you to view the MDBG CEDICT entry to verify if something seems off."
+      - button "Got it" [ref=e97]
