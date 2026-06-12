@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { config, validateConfig } from './config/index.js';
 import dictionaryRouter from './routes/dictionary.js';
 import parseRouter from './routes/parse.js';
+import parseV2Router from './routes/parseV2.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { rateLimitClientHeaders } from './middleware/rateLimit.js';
 import { requestAnalyticsMiddleware } from './services/analytics.js';
@@ -51,6 +52,7 @@ app.get('/', (_req, res) => {
 // Routes
 app.use(dictionaryRouter);
 app.use(parseRouter);
+app.use(parseV2Router);
 
 // Eval routes - opt-in via ENABLE_EVAL=true env var (allows model override for benchmarking)
 if (config.eval.enabled) {

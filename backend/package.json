@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/app.js",
     "import-cedict": "tsx scripts/import-cedict.ts",
+    "compare-parse": "tsx scripts/compare-parse.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "eval:model": "tsx tests/model-eval/runner.ts"

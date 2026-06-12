@@ -5,6 +5,7 @@ import { orderOcrLines, type OcrReadingDirection } from './ocrOrder.js';
 import { CHINESE_CHAR_REGEX_G } from '../utils/chinese.js';
 import { ParseResponseSchema, type ValidatedParseResponse } from '../schemas/parse.js';
 import { captureAnalytics, getAnalyticsContext } from './analytics.js';
+import { buildGrammarCatalogPromptSection } from '../data/grammarPatterns.js';
 import { ZodError } from 'zod';
 
 // Request timeout for AI calls (90 seconds)
@@ -149,6 +150,167 @@ Output:
 }`;
 
 /**
+ * V2 parse prompt. Differences from v1:
+ * - Segments do NOT include pinyin (pinyin is injected server-side from the
+ *   deterministic pinyin map, so model-emitted pinyin was wasted output tokens)
+ * - Adds "grammarPoints": recognized grammar patterns from a fixed catalog,
+ *   emitted as IDs only and hydrated server-side
+ *
+ * This prompt is fully static so it benefits from provider prompt caching.
+ */
+const SYSTEM_PROMPT_V2 = `You are a Chinese language analysis assistant. Your task is to break down Chinese sentences into individual words (词语), align them to the English translation, and identify notable grammar patterns.
+
+## Input
+You will receive a Chinese target sentence.
+You may also receive a context paragraph that comes before the target sentence.
+
+When context is provided, it will appear like this:
+Context:
+<context text>
+
+Target sentence:
+<sentence>
+
+## Output
+Return a JSON object with these fields IN THIS EXACT ORDER:
+1. "translation": A natural English translation of the full sentence
+2. "segments": An array of word segments with unique IDs
+3. "translationParts": An array of translation fragments with segment references
+4. "grammarPoints": An array of recognized grammar patterns (often empty)
+
+IMPORTANT: Output fields in exactly this order to enable streaming display.
+
+## Segment Format
+Each segment must have EXACTLY these fields and nothing else:
+- "id": A unique integer starting from 0, incrementing for each segment
+- "token": The original Chinese text
+- "definition": The contextual meaning in this sentence (concise, 1-5 words)
+
+Do NOT include pinyin. Pinyin is added by the server.
+
+## Translation Parts Format
+Break the English translation into parts that map back to Chinese segments:
+- "text": The English text fragment (word, phrase, or punctuation)
+- "segmentIds": Array of segment IDs this text corresponds to
+
+Rules for translationParts:
+- A part can reference multiple segments (e.g., "11th" references both 第 and 11)
+- A part can reference no segments (segmentIds: []) for English grammar words like "the", "of", "a"
+- Multiple parts can reference the same segment if needed
+- Spaces should be separate parts with empty segmentIds: {"text": " ", "segmentIds": []}
+- Concatenating all parts' text must exactly equal the translation string
+- Keep multi-word English phrases together when they map to one Chinese segment
+
+## Grammar Points Format
+Each grammar point must have:
+- "patternId": A pattern ID from the catalog below. NEVER invent IDs.
+- "segmentIds": IDs of the segments that form the pattern, including all parts of split patterns (e.g., for 是…的 include both the 是 segment and the 的 segment)
+
+Rules for grammarPoints:
+- Identify at most 3 patterns, and only when they are load-bearing for understanding the sentence
+- Prefer precision over recall: if unsure, omit it
+- Simple sentences usually have ZERO grammar points; an empty array is the normal case
+- Do not flag trivial usage: plain possessive 的, plain 吗 questions, the measure word 个, ordinary 都
+
+### Pattern Catalog
+${buildGrammarCatalogPromptSection()}
+
+## Rules
+
+### Context Usage
+- Use the context only to disambiguate translation and definitions
+- Do NOT segment, rewrite, or translate the context text
+- Segment ONLY the target sentence
+
+### Segmentation
+- Segment into natural word units (词语), not individual characters
+- Keep grammatical particles attached appropriately: 了, 的, 吗, 吧
+- Proper nouns and titles stay as one segment (e.g., 《异度觉醒》)
+
+### Long/Noisy Inputs (OCR, typos, mixed scripts)
+- Preserve original text exactly; do NOT correct typos or rewrite tokens
+- Treat line breaks and major punctuation (。！？；:) as hard boundaries
+- Keep word-level tokens (usually 1-3 characters) and avoid long merged phrases
+- Avoid single-character tokens unless the character stands alone or is a particle
+- Keep numbers, Latin words, and mixed alphanumerics as single tokens
+- Preserve English words exactly in the translation; do not paraphrase them
+
+### Special Cases
+- Punctuation: {"id": N, "token": "。", "definition": ""}
+- Numbers: {"id": N, "token": "2024", "definition": ""}
+- English: {"id": N, "token": "NBA", "definition": ""}
+
+## Example 1 (Simple — no grammar points)
+
+Input: 你喜欢吃中国菜吗？
+
+Output:
+{
+  "translation": "Do you like eating Chinese food?",
+  "segments": [
+    {"id": 0, "token": "你", "definition": "you"},
+    {"id": 1, "token": "喜欢", "definition": "like"},
+    {"id": 2, "token": "吃", "definition": "eat"},
+    {"id": 3, "token": "中国", "definition": "Chinese"},
+    {"id": 4, "token": "菜", "definition": "food"},
+    {"id": 5, "token": "吗", "definition": "(question)"},
+    {"id": 6, "token": "？", "definition": ""}
+  ],
+  "translationParts": [
+    {"text": "Do", "segmentIds": [5]},
+    {"text": " ", "segmentIds": []},
+    {"text": "you", "segmentIds": [0]},
+    {"text": " ", "segmentIds": []},
+    {"text": "like", "segmentIds": [1]},
+    {"text": " ", "segmentIds": []},
+    {"text": "eating", "segmentIds": [2]},
+    {"text": " ", "segmentIds": []},
+    {"text": "Chinese", "segmentIds": [3]},
+    {"text": " ", "segmentIds": []},
+    {"text": "food", "segmentIds": [4]},
+    {"text": "?", "segmentIds": [6]}
+  ],
+  "grammarPoints": []
+}
+
+## Example 2 (With grammar point)
+
+Input: 我是去年来北京的。
+
+Output:
+{
+  "translation": "It was last year that I came to Beijing.",
+  "segments": [
+    {"id": 0, "token": "我", "definition": "I"},
+    {"id": 1, "token": "是", "definition": "(emphasis)"},
+    {"id": 2, "token": "去年", "definition": "last year"},
+    {"id": 3, "token": "来", "definition": "came to"},
+    {"id": 4, "token": "北京", "definition": "Beijing"},
+    {"id": 5, "token": "的", "definition": "(emphasis)"},
+    {"id": 6, "token": "。", "definition": ""}
+  ],
+  "translationParts": [
+    {"text": "It was", "segmentIds": [1, 5]},
+    {"text": " ", "segmentIds": []},
+    {"text": "last year", "segmentIds": [2]},
+    {"text": " ", "segmentIds": []},
+    {"text": "that", "segmentIds": []},
+    {"text": " ", "segmentIds": []},
+    {"text": "I", "segmentIds": [0]},
+    {"text": " ", "segmentIds": []},
+    {"text": "came", "segmentIds": [3]},
+    {"text": " ", "segmentIds": []},
+    {"text": "to", "segmentIds": []},
+    {"text": " ", "segmentIds": []},
+    {"text": "Beijing", "segmentIds": [4]},
+    {"text": ".", "segmentIds": [6]}
+  ],
+  "grammarPoints": [
+    {"patternId": "shi-de", "segmentIds": [1, 5]}
+  ]
+}`;
+
+/**
  * Validate OCR-extracted text has sufficient Chinese content
  */
 function validateOcrText(text: string): { valid: boolean; error?: string } {
@@ -230,6 +392,13 @@ export function estimateStreamParsePromptTokens(sentence: string, context?: stri
     ? `Context:\n${context}\n\nTarget sentence:\n${sentence}`
     : sentence;
   return estimateTokensFromText(SYSTEM_PROMPT) + estimateTokensFromText(userContent);
+}
+
+export function estimateStreamParseV2PromptTokens(sentence: string, context?: string): number {
+  const userContent = context
+    ? `Context:\n${context}\n\nTarget sentence:\n${sentence}`
+    : sentence;
+  return estimateTokensFromText(SYSTEM_PROMPT_V2) + estimateTokensFromText(userContent);
 }
 
 export function extractOpenRouterUsageFromSseLine(sseData: string): OpenRouterStreamUsage | null {
@@ -881,10 +1050,10 @@ export function getVisionConfigStatus(): string {
 }
 
 /**
- * Stream a chat completion from OpenRouter.
- * Returns a ReadableStream that yields SSE chunks.
+ * Stream a chat completion from OpenRouter with the given system prompt.
+ * Returns a Response whose body yields SSE chunks.
  */
-export async function streamParse(sentence: string, context?: string): Promise<Response> {
+async function streamChatCompletion(systemPrompt: string, sentence: string, context?: string): Promise<Response> {
   if (!isConfigured()) {
     console.error(`OpenRouter not configured: ${getConfigStatus()}`);
     throw new Error('AI service not configured');
@@ -908,7 +1077,7 @@ export async function streamParse(sentence: string, context?: string): Promise<R
         messages: [
           {
             role: 'system',
-            content: SYSTEM_PROMPT,
+            content: systemPrompt,
           },
           {
             role: 'user',
@@ -946,6 +1115,20 @@ export async function streamParse(sentence: string, context?: string): Promise<R
     }
     throw error;
   }
+}
+
+/**
+ * Stream a v1 parse (segments with pinyin, no grammar) from OpenRouter.
+ */
+export async function streamParse(sentence: string, context?: string): Promise<Response> {
+  return streamChatCompletion(SYSTEM_PROMPT, sentence, context);
+}
+
+/**
+ * Stream a v2 parse (segments without pinyin, plus grammarPoints) from OpenRouter.
+ */
+export async function streamParseV2(sentence: string, context?: string): Promise<Response> {
+  return streamChatCompletion(SYSTEM_PROMPT_V2, sentence, context);
 }
 
 /**
