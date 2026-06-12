@@ -23,6 +23,7 @@ function getClientId(): string {
 
 export type ApiFeature =
   | 'web_text_parse'
+  | 'web_text_parse_v2'
   | 'web_paragraph_sentence_parse'
   | 'web_image_ocr'
   | 'web_image_parse'
@@ -128,6 +129,32 @@ export async function startParse(
       ...getClientHeaders(feature),
     },
     body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+
+  return response;
+}
+
+/**
+ * Start a v2 parse request (text-only) and return the response for streaming.
+ * The caller is responsible for reading the v2 SSE stream (see parseSseV2).
+ */
+export async function startParseV2(
+  sentence: string,
+  context?: string,
+  signal?: AbortSignal
+): Promise<Response> {
+  const response = await fetch(`${API_BASE_URL}/parse2`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getClientHeaders('web_text_parse_v2'),
+    },
+    body: JSON.stringify({ sentence, ...(context ? { context } : {}) }),
     signal,
   });
 

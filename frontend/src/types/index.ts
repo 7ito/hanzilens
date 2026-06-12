@@ -101,3 +101,24 @@ export interface LookupResponse {
  * Application view state
  */
 export type ViewState = 'input' | 'results' | 'image-results' | 'paragraph-results';
+
+/**
+ * Provisional segment from the v2 pipeline's instant CEDICT-based first pass
+ * (event: provisional). Replaced in place as LLM segments stream in.
+ */
+export interface ProvisionalSegment extends ParsedSegment {
+  /** Character offset of the token in the original sentence */
+  startOffset: number;
+}
+
+/**
+ * Hydrated grammar point from the v2 pipeline (event: grammar)
+ */
+export interface GrammarPoint {
+  patternId: string;
+  segmentIds: number[];
+  name: string;
+  template: string;
+  explanation: string;
+  level: string;
+}

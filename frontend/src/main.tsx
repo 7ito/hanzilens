@@ -4,7 +4,11 @@ import { PostHogProvider } from "posthog-js/react"
 
 import "./index.css"
 import App from "./App.tsx"
+import V2TestPage from "./components/V2TestPage.tsx"
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx"
+
+// No router in the app yet; /v2 mounts the v2 pipeline test page
+const isV2Route = window.location.pathname === "/v2" || window.location.pathname.startsWith("/v2/")
 
 // PostHog configuration - only initialize if API key is provided
 const posthogKey = import.meta.env.VITE_POSTHOG_KEY
@@ -32,15 +36,17 @@ const posthogOptions = {
   },
 }
 
+const page = isV2Route ? <V2TestPage /> : <App />
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
       {posthogKey ? (
         <PostHogProvider apiKey={posthogKey} options={posthogOptions}>
-          <App />
+          {page}
         </PostHogProvider>
       ) : (
-        <App />
+        page
       )}
     </ErrorBoundary>
   </StrictMode>
