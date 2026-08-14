@@ -922,6 +922,9 @@ export async function streamParse(sentence: string, context?: string): Promise<R
         response_format: { type: 'json_object' },
         temperature: TEMPERATURE,
         max_tokens: config.openrouter.maxTokens,
+        // Reasoning models otherwise spend the whole max_tokens budget thinking
+        // and stream back zero content. Ignored by non-reasoning models.
+        reasoning: { enabled: false },
         provider: {
           sort: 'throughput',
         },
@@ -1146,6 +1149,9 @@ export async function parseNonStreaming(
         response_format: { type: 'json_object' },
         temperature: TEMPERATURE,
         max_tokens: config.openrouter.maxTokens,
+        // See streamParse: reasoning would consume the token budget before any
+        // content is produced.
+        reasoning: { enabled: false },
         provider: providerOverride
           ? { only: [providerOverride] }
           : { sort: 'throughput' },
