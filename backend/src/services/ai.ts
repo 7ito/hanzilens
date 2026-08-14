@@ -204,13 +204,15 @@ Rules for translationParts:
 ## Grammar Points Format
 Each grammar point must have:
 - "patternId": A pattern ID from the catalog below. NEVER invent IDs.
-- "segmentIds": IDs of the segments that form the pattern, including all parts of split patterns (e.g., for 是…的 include both the 是 segment and the 的 segment)
+- "roles": An object binding each of the pattern's roles (listed in the catalog) to the segment IDs of the words playing that part, e.g. {"concession": [1,2,3], "contrast": [6,7,8,9]}
 
 Rules for grammarPoints:
+- Bind roles to the CONTENT words. Do NOT include the pattern's marker words (虽然, 但是, 比, 没有, 是, 的, 把, 得…) in any role.
+- Only use role names listed for that pattern in the catalog; omit a role the sentence leaves implicit
 - Identify at most 3 patterns, and only when they are load-bearing for understanding the sentence
 - Prefer precision over recall: if unsure, omit it
 - Simple sentences usually have ZERO grammar points; an empty array is the normal case
-- Do not flag trivial usage: plain possessive 的, plain 吗 questions, the measure word 个, ordinary 都
+- Do not flag trivial usage: plain possessive 的, plain 吗 questions, ordinary 都
 
 ### Pattern Catalog
 ${buildGrammarCatalogPromptSection()}
@@ -306,7 +308,7 @@ Output:
     {"text": ".", "segmentIds": [6]}
   ],
   "grammarPoints": [
-    {"patternId": "shi-de", "segmentIds": [1, 5]}
+    {"patternId": "shi-de", "roles": {"emphasized": [2]}}
   ]
 }`;
 

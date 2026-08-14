@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Loader2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,9 +9,16 @@ import { TranslationSpan } from './TranslationSpan';
 import { ThemeToggle } from './ThemeToggle';
 import { MobileDictionaryModal } from './MobileDictionaryModal';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useIsDarkTheme } from '@/hooks/useIsDarkTheme';
 import { useSegmentHighlight } from '@/hooks/useSegmentHighlight';
 import { useParseV2, type ParseV2Timings } from '@/hooks/useParseV2';
-import type { GrammarPoint, ParsedSegment } from '@/types';
+import {
+  chineseForSegments,
+  englishForSegments,
+  getRoleColor,
+  getRoleTint,
+} from '@/lib/grammarRoles';
+import type { GrammarPoint, ParsedSegment, TranslationPart } from '@/types';
 
 const CHAR_LIMIT = 500;
 
@@ -35,23 +42,76 @@ function TimingStrip({ timings }: { timings: ParseV2Timings }) {
   );
 }
 
-interface GrammarCardProps {
-  point: GrammarPoint;
-  onHover: (segmentIds: number[] | null) => void;
+/** Which grammar point is active (hovered), optionally narrowed to one role */
+interface ActiveGrammar {
+  pointIndex: number;
+  roleKey: string | null;
 }
 
-function GrammarCard({ point, onHover }: GrammarCardProps) {
+interface GrammarCardProps {
+  point: GrammarPoint;
+  segments: ParsedSegment[];
+  translationParts: TranslationPart[];
+  isDark: boolean;
+  /** roleKey null = the whole pattern */
+  onActivate: (roleKey: string | null) => void;
+  onDeactivate: () => void;
+}
+
+/**
+ * A grammar pattern instantiated with this sentence's words: one row per
+ * bound role showing its Chinese span and the English recovered from the
+ * translation alignment. Hovering the card highlights every role's segments
+ * in its role color; hovering a single row narrows the highlight to it.
+ */
+function GrammarCard({
+  point,
+  segments,
+  translationParts,
+  isDark,
+  onActivate,
+  onDeactivate,
+}: GrammarCardProps) {
   return (
     <Card
       className="transition-colors hover:border-primary/50"
-      onMouseEnter={() => onHover(point.segmentIds)}
-      onMouseLeave={() => onHover(null)}
+      onMouseEnter={() => onActivate(null)}
+      onMouseLeave={onDeactivate}
     >
       <CardContent className="pt-4">
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-2">
           <span className="font-semibold">{point.name}</span>
           <Badge variant="secondary">{point.level}</Badge>
         </div>
+
+        {/* The pattern as it appears in THIS sentence */}
+        <div className="mb-3 space-y-1">
+          {point.roles.map((role, roleIndex) => {
+            const chinese = chineseForSegments(segments, role.segmentIds);
+            const english = englishForSegments(translationParts, role.segmentIds);
+            return (
+              <div
+                key={role.key}
+                className="flex flex-wrap items-baseline gap-x-2 rounded-md px-2 py-1"
+                style={{ backgroundColor: getRoleTint(roleIndex, isDark) }}
+                onMouseEnter={() => onActivate(role.key)}
+                onMouseLeave={() => onActivate(null)}
+              >
+                <span
+                  className="text-xs font-medium whitespace-nowrap"
+                  style={{ color: getRoleColor(roleIndex, isDark) }}
+                >
+                  {role.label}
+                </span>
+                <span className="font-medium">{chinese}</span>
+                {english && (
+                  <span className="text-sm text-muted-foreground">“{english}”</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
         <div className="text-sm font-mono text-muted-foreground mb-2">{point.template}</div>
         <p className="text-sm text-foreground/90">{point.explanation}</p>
       </CardContent>
@@ -63,14 +123,16 @@ function GrammarCard({ point, onHover }: GrammarCardProps) {
  * Test page for the v2 parse pipeline (/parse2), mounted at /v2.
  *
  * Renders provisional CEDICT segments instantly (dimmed), replaces them as
- * LLM segments stream in, and shows hydrated grammar points below the
- * results. Hovering a grammar card highlights the segments it spans.
+ * LLM segments stream in, and shows grammar patterns instantiated with the
+ * sentence's own words below the results. Hovering a card (or one of its
+ * role rows) highlights the segments each role spans, color-coded per role.
  */
 export function V2TestPage() {
   const [text, setText] = useState('');
   const [selectedSegment, setSelectedSegment] = useState<ParsedSegment | null>(null);
-  const [grammarHoverIds, setGrammarHoverIds] = useState<number[] | null>(null);
+  const [activeGrammar, setActiveGrammar] = useState<ActiveGrammar | null>(null);
   const isMobile = useIsMobile();
+  const isDark = useIsDarkTheme();
 
   const {
     isLoading,
@@ -85,7 +147,6 @@ export function V2TestPage() {
 
   const {
     highlightColors,
-    segmentColorMap,
     highlightedSegmentIds,
     setHoveredSegmentId,
     setHoveredPartIndex,
@@ -99,14 +160,31 @@ export function V2TestPage() {
   const hasAlignmentData = translationParts.length > 0;
   const hasResults = segments.length > 0 || translation || isLoading;
 
-  // Grammar-card hover takes precedence over segment/translation hover
-  const effectiveHighlightedIds = grammarHoverIds
-    ? new Set(grammarHoverIds)
+  // When a grammar point is active, each segment is tinted by the role that
+  // binds it (narrowed to one role when a role row is hovered)
+  const grammarTintMap = useMemo(() => {
+    if (!activeGrammar) return null;
+    const point = grammarPoints[activeGrammar.pointIndex];
+    if (!point) return null;
+
+    const map = new Map<number, string>();
+    point.roles.forEach((role, roleIndex) => {
+      if (activeGrammar.roleKey !== null && role.key !== activeGrammar.roleKey) return;
+      for (const id of role.segmentIds) {
+        map.set(id, getRoleTint(roleIndex, isDark));
+      }
+    });
+    return map;
+  }, [activeGrammar, grammarPoints, isDark]);
+
+  // An active grammar pattern takes precedence over segment/translation hover
+  const effectiveHighlightedIds = grammarTintMap
+    ? new Set(grammarTintMap.keys())
     : highlightedSegmentIds;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    setGrammarHoverIds(null);
+    setActiveGrammar(null);
     void parse(text.trim());
   };
 
@@ -194,7 +272,7 @@ export function V2TestPage() {
                   <Segment
                     segment={segment}
                     highlightColor={
-                      grammarHoverIds ? segmentColorMap.get(segment.id) : highlightColors[index]
+                      grammarTintMap ? grammarTintMap.get(segment.id) : highlightColors[index]
                     }
                     isHighlighted={effectiveHighlightedIds.has(segment.id)}
                     onMouseEnter={() => setHoveredSegmentId(segment.id)}
@@ -217,7 +295,11 @@ export function V2TestPage() {
                     <GrammarCard
                       key={`${point.patternId}-${idx}`}
                       point={point}
-                      onHover={setGrammarHoverIds}
+                      segments={segments}
+                      translationParts={translationParts}
+                      isDark={isDark}
+                      onActivate={(roleKey) => setActiveGrammar({ pointIndex: idx, roleKey })}
+                      onDeactivate={() => setActiveGrammar(null)}
                     />
                   ))}
                 </div>

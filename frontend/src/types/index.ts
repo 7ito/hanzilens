@@ -112,13 +112,24 @@ export interface ProvisionalSegment extends ParsedSegment {
 }
 
 /**
+ * A grammar pattern role bound to this sentence's segments,
+ * e.g. { key: "concession", label: "although…", segmentIds: [1, 2, 3] }
+ */
+export interface GrammarRole {
+  key: string;
+  label: string;
+  segmentIds: number[];
+}
+
+/**
  * Hydrated grammar point from the v2 pipeline (event: grammar)
  */
 export interface GrammarPoint {
   patternId: string;
-  segmentIds: number[];
   name: string;
   template: string;
   explanation: string;
   level: string;
+  /** Roles in display order; roles the model left unbound are omitted */
+  roles: GrammarRole[];
 }

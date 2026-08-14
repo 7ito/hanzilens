@@ -14,3 +14,10 @@ AGENTS.md
 
 # Extension directory (moved to separate repo)
 remake/extension/
+
+# Parse-error debug logs
+backend/logs/
+
+# Debug artifacts (screenshots, response dumps, Playwright session logs)
+tmp/
+frontend/.playwright-cli/

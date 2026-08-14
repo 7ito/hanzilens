@@ -16,6 +16,7 @@ import { buildProvisionalSegments } from '../services/provisionalSegments.js';
 import { createStreamStateV2, processStreamBufferV2 } from '../services/streamProcessorV2.js';
 import { extractDeltaContent } from '../services/streamProcessor.js';
 import { hydrateGrammarPoints } from '../data/grammarPatterns.js';
+import { logParseError, validateStreamOutput } from '../services/parseErrorLog.js';
 import { hasChinese } from '../utils/chinese.js';
 
 const router = Router();
@@ -66,16 +67,30 @@ function sendImmediateTranslation(res: ExpressResponse, sentence: string): void 
 }
 
 /**
- * Parse the accumulated raw model output and hydrate its grammar points.
- * Returns [] when the output is unparseable or has no valid points.
+ * Hydrate grammar points from the already-parsed model output.
+ * Logs when the model emitted points but none survived hydration
+ * (hallucinated pattern IDs / malformed entries).
  */
-function extractGrammarPoints(rawModelOutput: string): ReturnType<typeof hydrateGrammarPoints> {
-  try {
-    const parsed = JSON.parse(rawModelOutput) as { grammarPoints?: unknown };
-    return hydrateGrammarPoints(parsed.grammarPoints);
-  } catch {
-    return [];
+function extractGrammarPoints(
+  parsedOutput: unknown | null,
+  sentence: string
+): ReturnType<typeof hydrateGrammarPoints> {
+  if (!parsedOutput || typeof parsedOutput !== 'object') return [];
+
+  const rawPoints = (parsedOutput as { grammarPoints?: unknown }).grammarPoints;
+  const hydrated = hydrateGrammarPoints(rawPoints);
+
+  if (Array.isArray(rawPoints) && rawPoints.length > 0 && hydrated.length === 0) {
+    logParseError({
+      route: 'parse2',
+      stage: 'grammar-extraction',
+      message: `All ${rawPoints.length} grammar point(s) dropped during hydration`,
+      sentence,
+      raw: JSON.stringify(rawPoints),
+    });
   }
+
+  return hydrated;
 }
 
 /**
@@ -137,6 +152,7 @@ router.post('/parse2', parseRequestAbuseRateLimit, rejectImageInput, validateChi
     let sseLineBuffer = '';
     let upstreamUsage: OpenRouterStreamUsage | null = null;
     let outputContent = '';
+    let emittedContent = '';
     let usageLogged = false;
 
     const logUsage = (completed: boolean) => {
@@ -166,9 +182,20 @@ router.post('/parse2', parseRequestAbuseRateLimit, rejectImageInput, validateChi
           // Flush any remaining buffer
           if (streamState.buffer) {
             writeContentDelta(res, streamState.buffer);
+            emittedContent += streamState.buffer;
           }
+          // Validate the completed stream (raw vs emitted) and log breakage;
+          // the truncated output after a client disconnect is not an error
+          const parsedOutput = clientDisconnected
+            ? null
+            : validateStreamOutput({
+                route: 'parse2',
+                sentence,
+                raw: outputContent,
+                emitted: emittedContent,
+              });
           // Stage 2 (tail): hydrate grammar point IDs from the catalog
-          writeEvent(res, 'grammar', { grammarPoints: extractGrammarPoints(outputContent) });
+          writeEvent(res, 'grammar', { grammarPoints: extractGrammarPoints(parsedOutput, sentence) });
           res.write('data: [DONE]\n');
           res.end();
           logUsage(true);
@@ -211,6 +238,7 @@ router.post('/parse2', parseRequestAbuseRateLimit, rejectImageInput, validateChi
 
             if (result.toEmit) {
               writeContentDelta(res, result.toEmit);
+              emittedContent += result.toEmit;
             }
           } else if (trimmedLine.startsWith(':')) {
             // SSE comment (like ": OPENROUTER PROCESSING") - pass through
@@ -220,7 +248,12 @@ router.post('/parse2', parseRequestAbuseRateLimit, rejectImageInput, validateChi
       }
     } catch (streamError) {
       if (!clientDisconnected) {
-        console.error('Error during v2 streaming:', streamError);
+        logParseError({
+          route: 'parse2',
+          stage: 'stream',
+          message: streamError instanceof Error ? streamError.message : String(streamError),
+          sentence,
+        });
       }
       if (!res.writableEnded) {
         res.end();

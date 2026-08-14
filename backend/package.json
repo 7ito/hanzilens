@@ -8,6 +8,7 @@
     "start": "node dist/app.js",
     "import-cedict": "tsx scripts/import-cedict.ts",
     "compare-parse": "tsx scripts/compare-parse.ts",
+    "errors": "tsx scripts/showParseErrors.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "eval:model": "tsx tests/model-eval/runner.ts"

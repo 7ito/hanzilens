@@ -22,6 +22,7 @@ import {
 import { HttpError } from '../middleware/errorHandler.js';
 import { buildPinyinMap, type PinyinMap } from '../services/pinyinCorrection.js';
 import { createStreamState, processStreamBuffer, extractDeltaContent } from '../services/streamProcessor.js';
+import { logParseError, validateStreamOutput } from '../services/parseErrorLog.js';
 import { CHINESE_CHAR_REGEX_G, hasChinese } from '../utils/chinese.js';
 
 const router = Router();
@@ -127,6 +128,7 @@ async function streamResponseWithCorrection(
   let sseLineBuffer = '';
   let upstreamUsage: OpenRouterStreamUsage | null = null;
   let outputContent = '';
+  let emittedContent = '';
   let usageLogged = false;
 
   const logUsage = (completed: boolean) => {
@@ -157,6 +159,16 @@ async function streamResponseWithCorrection(
         if (streamState.buffer) {
           const sseChunk = `data: {"choices":[{"delta":{"content":${JSON.stringify(streamState.buffer)}}}]}\n`;
           res.write(sseChunk);
+          emittedContent += streamState.buffer;
+        }
+        // Log invalid raw/emitted JSON; truncation after a disconnect is expected
+        if (!clientDisconnected) {
+          validateStreamOutput({
+            route: usageMetadata.route,
+            sentence: pinyinMap.sentence,
+            raw: outputContent,
+            emitted: emittedContent,
+          });
         }
         res.write('data: [DONE]\n');
         res.end();
@@ -207,6 +219,7 @@ async function streamResponseWithCorrection(
           if (result.toEmit) {
             const sseChunk = `data: {"choices":[{"delta":{"content":${JSON.stringify(result.toEmit)}}}]}\n`;
             res.write(sseChunk);
+            emittedContent += result.toEmit;
           }
         } else if (trimmedLine.startsWith(':')) {
           // SSE comment (like ": OPENROUTER PROCESSING") - pass through
@@ -216,7 +229,12 @@ async function streamResponseWithCorrection(
     }
   } catch (streamError) {
     if (!clientDisconnected) {
-      console.error('Error during streaming:', streamError);
+      logParseError({
+        route: usageMetadata.route,
+        stage: 'stream',
+        message: streamError instanceof Error ? streamError.message : String(streamError),
+        sentence: pinyinMap.sentence,
+      });
     }
     if (!res.writableEnded) {
       res.end();

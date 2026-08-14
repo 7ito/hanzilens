@@ -43,13 +43,25 @@ function isValidProvisionalSegment(value: unknown): value is ProvisionalSegment 
   );
 }
 
+function isValidGrammarRole(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const role = value as Record<string, unknown>;
+  return (
+    typeof role.key === 'string' &&
+    typeof role.label === 'string' &&
+    Array.isArray(role.segmentIds) &&
+    role.segmentIds.every((id: unknown) => typeof id === 'number')
+  );
+}
+
 function isValidGrammarPoint(value: unknown): value is GrammarPoint {
   if (typeof value !== 'object' || value === null) return false;
   const point = value as Record<string, unknown>;
   return (
     typeof point.patternId === 'string' &&
-    Array.isArray(point.segmentIds) &&
-    point.segmentIds.every((id: unknown) => typeof id === 'number') &&
+    Array.isArray(point.roles) &&
+    point.roles.length > 0 &&
+    point.roles.every(isValidGrammarRole) &&
     typeof point.name === 'string' &&
     typeof point.template === 'string' &&
     typeof point.explanation === 'string' &&
